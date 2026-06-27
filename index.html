@@ -90,6 +90,23 @@
   .section-title { font-size: 12px; font-weight: 600; color: var(--text-tertiary); margin: 0 0 12px; text-transform: uppercase; letter-spacing: 0.04em; }
   .table-scroll { overflow-x: auto; }
   .loading { text-align: center; padding: 2rem; color: var(--text-secondary); font-size: 13px; }
+
+  /* 詳情頁重點資訊卡 */
+  .hero-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 0; }
+  @media (max-width: 600px) { .hero-grid { grid-template-columns: 1fr 1fr; } }
+  .hero-box { background: var(--bg); border-radius: 12px; padding: 0.9rem 1rem; }
+  .hero-box p:first-child { font-size: 11.5px; color: var(--text-tertiary); margin: 0 0 5px; font-weight: 600; }
+  .hero-box p:last-child { font-size: 16px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+
+  .photo-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  @media (max-width: 600px) { .photo-grid { grid-template-columns: repeat(2, 1fr); } }
+  .photo-box { background: var(--bg); border-radius: 10px; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; color: var(--text-tertiary); text-decoration: none; font-size: 22px; }
+  .photo-box:hover { background: var(--gray-soft); }
+
+  .file-card { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--bg); border-radius: 10px; margin-bottom: 6px; text-decoration: none; color: var(--text); font-size: 13px; }
+  .file-card:hover { background: var(--gray-soft); }
+  .file-card .arrow { margin-left: auto; color: var(--text-tertiary); }
+  .empty-note { font-size: 12.5px; color: var(--text-tertiary); }
 </style>
 </head>
 <body>
@@ -129,21 +146,27 @@
   <div id="view-detail" class="hidden">
     <button class="back-btn" onclick="showMain()">← 返回總覽</button>
     <div class="card" style="margin-top:10px;">
-      <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
-        <span id="d-name" style="font-size:16px; font-weight:600;"></span>
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+        <span id="d-name" style="font-size:18px; font-weight:700;"></span>
         <span id="d-status" class="tag" style="margin-left:auto;"></span>
       </div>
-      <p class="section-title">基本資訊</p>
+      <div class="hero-grid">
+        <div class="hero-box"><p>展期</p><p id="d-date"></p></div>
+        <div class="hero-box"><p>地點</p><p id="d-place"></p></div>
+        <div class="hero-box"><p>攤位</p><p id="d-booth"></p></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="section-title">其他資訊</p>
       <div class="detail-row">
-        <div><span>展期</span><span id="d-date"></span></div>
-        <div><span>地點</span><span id="d-place"></span></div>
-        <div><span>攤位編號</span><span id="d-booth"></span></div>
         <div><span>攤位大小</span><span id="d-boothsize"></span></div>
         <div><span>參展性質</span><span id="d-nature"></span></div>
         <div><span>執行單位</span><span id="d-unit"></span></div>
         <div><span>業務參展人</span><span id="d-salesperson"></span></div>
       </div>
     </div>
+
     <div class="card">
       <p class="section-title">預算與補助</p>
       <div class="detail-row">
@@ -154,6 +177,22 @@
         <div><span>需要結案簡報</span><span id="d-report-needed"></span></div>
       </div>
     </div>
+
+    <div class="card">
+      <p class="section-title">現場照片</p>
+      <div id="d-photos"></div>
+    </div>
+
+    <div class="card">
+      <p class="section-title">宣傳素材</p>
+      <div id="d-promo"></div>
+    </div>
+
+    <div class="card">
+      <p class="section-title">結案報告</p>
+      <div id="d-report"></div>
+    </div>
+
     <div class="card">
       <p class="section-title">備註說明</p>
       <p id="d-note" style="font-size:13px; margin:0; color:var(--text-secondary);"></p>
@@ -305,13 +344,20 @@ function shortDate(d) {
   return parts.length === 3 ? `${parts[1]}/${parts[2]}` : d;
 }
 
+function fileCard(label, url, icon) {
+  if (!url) return '';
+  return `<a class="file-card" href="${url}" target="_blank" rel="noopener">
+    <span>${icon}</span><span>${label}</span><span class="arrow">↓</span>
+  </a>`;
+}
+
 function showDetail(idx) {
   const ex = exhibitions[idx];
   document.getElementById('d-name').textContent = ex['展覽名稱'] || '';
   document.getElementById('d-status').outerHTML = `<span id="d-status" class="tag tag-${STATUS_COLOR[ex['參展狀態']] || 'gray'}" style="margin-left:auto;">${ex['參展狀態'] || '-'}</span>`;
-  document.getElementById('d-date').textContent = `${ex['展期開始'] || ''} - ${ex['展期結束'] || ''}`;
-  document.getElementById('d-place').textContent = `${ex['地點城市'] || ''}${ex['國家'] ? '，' + ex['國家'] : ''}`;
-  document.getElementById('d-booth').textContent = ex['BoothNo'] || '-';
+  document.getElementById('d-date').textContent = `${shortDate(ex['展期開始'])} - ${shortDate(ex['展期結束'])}`;
+  document.getElementById('d-place').textContent = `${ex['地點城市'] || ''}`;
+  document.getElementById('d-booth').textContent = ex['BoothNo'] || '未提供';
   document.getElementById('d-boothsize').textContent = ex['BoothSize'] || '-';
   document.getElementById('d-nature').textContent = ex['參展性質'] || '-';
   document.getElementById('d-unit').textContent = ex['執行單位'] || '-';
@@ -322,6 +368,19 @@ function showDetail(idx) {
   document.getElementById('d-subsidy-status').textContent = ex['補助核銷狀態'] || '-';
   document.getElementById('d-report-needed').textContent = ex['是否需要結案簡報'] || '-';
   document.getElementById('d-note').textContent = ex['備註說明'] || '（無）';
+
+  // 照片：改為單一資料夾連結（欄位：照片資料夾連結）
+  document.getElementById('d-photos').innerHTML = ex['照片資料夾連結']
+    ? fileCard('查看現場照片資料夾', ex['照片資料夾連結'], '📁')
+    : `<p class="empty-note">尚無照片，可至文件庫上傳後在 Google Sheet 補上資料夾連結。</p>`;
+
+  // 宣傳素材：Banner連結、邀請函連結
+  const promoHtml = fileCard('Email Banner', ex['Banner連結'], '🖼️') + fileCard('邀請函', ex['邀請函連結'], '✉️');
+  document.getElementById('d-promo').innerHTML = promoHtml || `<p class="empty-note">尚無宣傳素材。</p>`;
+
+  // 結案報告
+  const reportHtml = fileCard(`${ex['展覽名稱'] || ''} 結案簡報`, ex['結案報告連結'], '📊');
+  document.getElementById('d-report').innerHTML = reportHtml || `<p class="empty-note">尚無結案報告，展覽結束後可補上連結。</p>`;
 
   document.getElementById('view-main').classList.add('hidden');
   document.getElementById('view-detail').classList.remove('hidden');
