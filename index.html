@@ -6,48 +6,88 @@
 <title>TEX-RAY 展覽管理系統</title>
 <style>
   :root {
-    --blue: #0C447C; --blue-bg: #E6F1FB;
-    --green: #27500A; --green-bg: #EAF3DE;
-    --amber: #633806; --amber-bg: #FAEEDA;
-    --gray: #555; --gray-bg: #EDEDED;
-    --teal: #085041; --teal-bg: #E1F5EE;
-    --border: #E2E2E2;
-    --bg: #F7F7F7;
+    /* 語意色系：藍=確定進行中、橘黃=待決定、綠=已完成、灰=不適用/已過 */
+    --blue: #1D4ED8;     --blue-bg: #EFF4FF;     --blue-soft: #DBE6FE;
+    --amber: #B45309;    --amber-bg: #FFF7E8;    --amber-soft: #FCE7C3;
+    --green: #15803D;    --green-bg: #F0FBF4;    --green-soft: #CDEFDA;
+    --gray: #6B7280;     --gray-bg: #F5F5F5;     --gray-soft: #E5E5E5;
+
+    --border: #EAEAEA;
+    --bg: #FAFAFA;
     --card: #FFFFFF;
-    --text: #1A1A1A;
-    --text-secondary: #6B6B6B;
+    --text: #18181B;
+    --text-secondary: #71717A;
+    --text-tertiary: #A1A1AA;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; font-family: -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
-    background: var(--bg); color: var(--text);
+    background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased;
   }
   .wrap { max-width: 920px; margin: 0 auto; padding: 1rem; }
-  header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-  header h1 { font-size: 17px; font-weight: 600; margin: 0; }
-  header span { font-size: 12px; color: var(--text-secondary); }
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.2rem; margin-bottom: 1rem; }
-  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 1rem; flex-wrap: wrap; gap: 6px; }
+  header h1 { font-size: 17px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  header span { font-size: 12px; color: var(--text-tertiary); }
+
+  .year-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .year-tab {
+    font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--card); color: var(--text-tertiary); cursor: pointer;
+  }
+  .year-tab.active { background: var(--text); color: #fff; border-color: var(--text); }
+  .year-tab[disabled] { opacity: 0.45; cursor: default; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 1.1rem 1.25rem; margin-bottom: 1rem; }
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
   @media (max-width: 600px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
-  .stat-box { background: var(--bg); border-radius: 10px; padding: 0.7rem; }
-  .stat-box p:first-child { font-size: 12px; color: var(--text-secondary); margin: 0 0 4px; }
-  .stat-box p:last-child { font-size: 20px; font-weight: 600; margin: 0; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { text-align: left; font-size: 11px; color: var(--text-secondary); padding: 6px 10px; border-bottom: 1px solid var(--border); font-weight: 500;}
-  td { padding: 10px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
-  tr:hover td { background: var(--bg); }
-  .tag { font-size: 11px; padding: 3px 9px; border-radius: 99px; display: inline-block; white-space: nowrap; }
-  .tag-blue { background: var(--blue-bg); color: var(--blue); }
-  .tag-green { background: var(--green-bg); color: var(--green); }
-  .tag-amber { background: var(--amber-bg); color: var(--amber); }
-  .tag-gray { background: var(--gray-bg); color: var(--gray); }
-  .tag-teal { background: var(--teal-bg); color: var(--teal); }
+  .stat-box { border-radius: 12px; padding: 0.85rem 0.9rem; border: 1px solid transparent; }
+  .stat-box p:first-child { font-size: 12px; margin: 0 0 6px; opacity: 0.85; }
+  .stat-box p:last-child { font-size: 24px; font-weight: 700; margin: 0; letter-spacing: -0.02em; }
+  .stat-total   { background: var(--gray-bg); color: var(--text); }
+  .stat-total p:first-child { color: var(--text-secondary); }
+  .stat-confirmed { background: var(--blue-bg); color: var(--blue); }
+  .stat-evaluating { background: var(--amber-bg); color: var(--amber); }
+  .stat-done { background: var(--green-bg); color: var(--green); }
+
+  .group-label { font-size: 12px; font-weight: 600; color: var(--text-tertiary); margin: 18px 0 8px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .group-label:first-child { margin-top: 0; }
+  .ex-row {
+    display: flex; align-items: center; gap: 12px; padding: 11px 8px;
+    border-bottom: 1px solid var(--border); cursor: pointer; border-left: 3px solid transparent;
+  }
+  .ex-row:last-child { border-bottom: none; }
+  .ex-row:hover { background: var(--bg); }
+  .ex-row.c-blue { border-left-color: var(--blue); }
+  .ex-row.c-amber { border-left-color: var(--amber); }
+  .ex-row.c-green { border-left-color: var(--green); }
+  .ex-row.c-gray { border-left-color: var(--gray-soft); }
+  .ex-name { font-size: 13.5px; font-weight: 600; flex: 1.6; min-width: 0; }
+  .ex-date { font-size: 12.5px; color: var(--text-secondary); flex: 1; }
+  .ex-place { font-size: 12.5px; color: var(--text-secondary); flex: 0.9; }
+  .ex-row .tag { flex: 0 0 auto; }
+  @media (max-width: 600px) {
+    .ex-row { flex-wrap: wrap; }
+    .ex-name { flex: 1 1 100%; }
+    .ex-date, .ex-place { font-size: 12px; }
+  }
+
+  .collapse-toggle { font-size: 12.5px; color: var(--text-tertiary); cursor: pointer; padding: 8px 8px 2px; user-select: none; }
+  .collapse-toggle:hover { color: var(--text-secondary); }
+  .collapsed { display: none; }
+
+  .tag { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 99px; display: inline-block; white-space: nowrap; }
+  .tag-blue { background: var(--blue-soft); color: var(--blue); }
+  .tag-green { background: var(--green-soft); color: var(--green); }
+  .tag-amber { background: var(--amber-soft); color: var(--amber); }
+  .tag-gray { background: var(--gray-soft); color: var(--gray); }
+
   .hidden { display: none; }
-  .back-btn { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
+  .back-btn { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 5px 12px; font-size: 12px; cursor: pointer; color: var(--text-secondary); }
+  .back-btn:hover { background: var(--bg); }
   .detail-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px; }
   @media (max-width: 600px) { .detail-row { grid-template-columns: 1fr; } }
-  .detail-row div span:first-child { color: var(--text-secondary); margin-right: 6px; }
-  .section-title { font-size: 13px; color: var(--text-secondary); margin: 0 0 10px; }
+  .detail-row div span:first-child { color: var(--text-tertiary); margin-right: 6px; }
+  .section-title { font-size: 12px; font-weight: 600; color: var(--text-tertiary); margin: 0 0 12px; text-transform: uppercase; letter-spacing: 0.04em; }
   .table-scroll { overflow-x: auto; }
   .loading { text-align: center; padding: 2rem; color: var(--text-secondary); font-size: 13px; }
 </style>
@@ -60,30 +100,28 @@
     <span id="updated-label"></span>
   </header>
 
+  <div class="year-tabs" id="year-tabs"></div>
+
   <div id="loading" class="loading">資料載入中...</div>
 
   <!-- 主畫面：總覽 + 一覽表 -->
   <div id="view-main" class="hidden">
     <div class="card">
-      <p class="section-title">2026 年度展覽進度</p>
+      <p class="section-title" id="stats-year-label">2026 年度展覽進度</p>
       <div class="stats-grid">
-        <div class="stat-box"><p>全年展覽數</p><p id="stat-total">-</p></div>
-        <div class="stat-box"><p>確定參加</p><p id="stat-confirmed">-</p></div>
-        <div class="stat-box"><p>評估中</p><p id="stat-evaluating">-</p></div>
-        <div class="stat-box"><p>已結案</p><p id="stat-done">-</p></div>
+        <div class="stat-box stat-total"><p>全年展覽數</p><p id="stat-total">-</p></div>
+        <div class="stat-box stat-confirmed"><p>確定參加</p><p id="stat-confirmed">-</p></div>
+        <div class="stat-box stat-evaluating"><p>評估中</p><p id="stat-evaluating">-</p></div>
+        <div class="stat-box stat-done"><p>已結案</p><p id="stat-done">-</p></div>
       </div>
     </div>
 
     <div class="card">
-      <p class="section-title">展覽一覽（點任一列查看詳情）</p>
-      <div class="table-scroll">
-        <table>
-          <thead>
-            <tr><th>展覽名稱</th><th>展期</th><th>地點</th><th>狀態</th></tr>
-          </thead>
-          <tbody id="table-body"></tbody>
-        </table>
-      </div>
+      <p class="section-title">展覽一覽　·　點任一筆查看詳情</p>
+      <div id="group-confirmed"></div>
+      <div id="group-evaluating"></div>
+      <div id="group-done"></div>
+      <div id="group-skipped"></div>
     </div>
   </div>
 
@@ -158,6 +196,8 @@ const STATUS_COLOR = {
   '確定參加': 'blue', '評估中': 'amber', '已結案': 'gray', '暫不參加': 'gray'
 };
 
+let currentYear = null;
+
 function statusTag(status) {
   const color = STATUS_COLOR[status] || 'gray';
   return `<span class="tag tag-${color}">${status || '-'}</span>`;
@@ -183,8 +223,7 @@ function loadData() {
       });
       document.getElementById('loading').classList.add('hidden');
       document.getElementById('updated-label').textContent = '更新時間：' + new Date().toLocaleString('zh-TW');
-      renderStats();
-      renderTable();
+      renderYearTabs();
       showMain();
     })
     .catch(err => {
@@ -193,27 +232,71 @@ function loadData() {
     });
 }
 
-function renderStats() {
-  document.getElementById('stat-total').textContent = exhibitions.length;
-  document.getElementById('stat-confirmed').textContent = exhibitions.filter(e => e['參展狀態'] === '確定參加').length;
-  document.getElementById('stat-evaluating').textContent = exhibitions.filter(e => e['參展狀態'] === '評估中').length;
-  document.getElementById('stat-done').textContent = exhibitions.filter(e => e['參展狀態'] === '已結案').length;
+function renderYearTabs() {
+  const years = [...new Set(exhibitions.map(e => e['年度']).filter(Boolean))].sort();
+  currentYear = years[years.length - 1] || null;
+  const wrap = document.getElementById('year-tabs');
+  // 未來可擴增年度先預留 placeholder（無資料時顯示為灰階不可點擊）
+  const allYears = [...new Set([...years, String(Number(currentYear) + 1)])];
+  wrap.innerHTML = allYears.map(y => {
+    const hasData = years.includes(y);
+    return `<button class="year-tab ${y === currentYear ? 'active' : ''}" ${hasData ? `onclick="selectYear('${y}')"` : 'disabled'}>${y}${hasData ? '' : '（尚無資料）'}</button>`;
+  }).join('');
+  renderYearView();
 }
 
-function renderTable() {
-  const tbody = document.getElementById('table-body');
-  tbody.innerHTML = '';
-  exhibitions.forEach((ex, idx) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><strong>${ex['展覽名稱'] || ''}</strong></td>
-      <td>${shortDate(ex['展期開始'])} - ${shortDate(ex['展期結束'])}</td>
-      <td>${ex['地點城市'] || ''}</td>
-      <td>${statusTag(ex['參展狀態'])}</td>
-    `;
-    tr.onclick = () => showDetail(idx);
-    tbody.appendChild(tr);
-  });
+function selectYear(y) {
+  currentYear = y;
+  document.querySelectorAll('.year-tab').forEach(b => b.classList.toggle('active', b.textContent.startsWith(y)));
+  renderYearView();
+}
+
+function renderYearView() {
+  const list = exhibitions.filter(e => e['年度'] === currentYear);
+  document.getElementById('stats-year-label').textContent = `${currentYear} 年度展覽進度`;
+  renderStats(list);
+  renderGroupedList(list);
+}
+
+function renderStats(list) {
+  document.getElementById('stat-total').textContent = list.length;
+  document.getElementById('stat-confirmed').textContent = list.filter(e => e['參展狀態'] === '確定參加').length;
+  document.getElementById('stat-evaluating').textContent = list.filter(e => e['參展狀態'] === '評估中').length;
+  document.getElementById('stat-done').textContent = list.filter(e => e['參展狀態'] === '已結案').length;
+}
+
+function exRowHtml(ex) {
+  const idx = exhibitions.indexOf(ex);
+  const color = STATUS_COLOR[ex['參展狀態']] || 'gray';
+  return `
+    <div class="ex-row c-${color}" onclick="showDetail(${idx})">
+      <span class="ex-name">${ex['展覽名稱'] || ''}</span>
+      <span class="ex-date">${shortDate(ex['展期開始'])} - ${shortDate(ex['展期結束'])}</span>
+      <span class="ex-place">${ex['地點城市'] || ''}</span>
+      ${statusTag(ex['參展狀態'])}
+    </div>`;
+}
+
+function renderGroupedList(list) {
+  const confirmed = list.filter(e => e['參展狀態'] === '確定參加');
+  const evaluating = list.filter(e => e['參展狀態'] === '評估中');
+  const done = list.filter(e => e['參展狀態'] === '已結案');
+  const skipped = list.filter(e => e['參展狀態'] === '暫不參加');
+
+  document.getElementById('group-confirmed').innerHTML = confirmed.length
+    ? `<p class="group-label">確定參加</p>${confirmed.map(exRowHtml).join('')}` : '';
+  document.getElementById('group-evaluating').innerHTML = evaluating.length
+    ? `<p class="group-label">評估中</p>${evaluating.map(exRowHtml).join('')}` : '';
+  document.getElementById('group-done').innerHTML = done.length
+    ? `<p class="group-label">已結案</p>${done.map(exRowHtml).join('')}` : '';
+  document.getElementById('group-skipped').innerHTML = skipped.length
+    ? `<p class="collapse-toggle" onclick="toggleSkipped()">▸ 暫不參加（${skipped.length}）— 點擊展開</p>
+       <div id="skipped-list" class="collapsed">${skipped.map(exRowHtml).join('')}</div>` : '';
+}
+
+function toggleSkipped() {
+  const el = document.getElementById('skipped-list');
+  el.classList.toggle('collapsed');
 }
 
 function shortDate(d) {
