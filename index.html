@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TEX-RAY 展覽管理系統</title>
+<style>
+  :root {
+    --blue: #0C447C; --blue-bg: #E6F1FB;
+    --green: #27500A; --green-bg: #EAF3DE;
+    --amber: #633806; --amber-bg: #FAEEDA;
+    --gray: #555; --gray-bg: #EDEDED;
+    --teal: #085041; --teal-bg: #E1F5EE;
+    --border: #E2E2E2;
+    --bg: #F7F7F7;
+    --card: #FFFFFF;
+    --text: #1A1A1A;
+    --text-secondary: #6B6B6B;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
+    background: var(--bg); color: var(--text);
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 1rem; }
+  header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+  header h1 { font-size: 17px; font-weight: 600; margin: 0; }
+  header span { font-size: 12px; color: var(--text-secondary); }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.2rem; margin-bottom: 1rem; }
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  @media (max-width: 600px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+  .stat-box { background: var(--bg); border-radius: 10px; padding: 0.7rem; }
+  .stat-box p:first-child { font-size: 12px; color: var(--text-secondary); margin: 0 0 4px; }
+  .stat-box p:last-child { font-size: 20px; font-weight: 600; margin: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-size: 11px; color: var(--text-secondary); padding: 6px 10px; border-bottom: 1px solid var(--border); font-weight: 500;}
+  td { padding: 10px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
+  tr:hover td { background: var(--bg); }
+  .tag { font-size: 11px; padding: 3px 9px; border-radius: 99px; display: inline-block; white-space: nowrap; }
+  .tag-blue { background: var(--blue-bg); color: var(--blue); }
+  .tag-green { background: var(--green-bg); color: var(--green); }
+  .tag-amber { background: var(--amber-bg); color: var(--amber); }
+  .tag-gray { background: var(--gray-bg); color: var(--gray); }
+  .tag-teal { background: var(--teal-bg); color: var(--teal); }
+  .hidden { display: none; }
+  .back-btn { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
+  .detail-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px; }
+  @media (max-width: 600px) { .detail-row { grid-template-columns: 1fr; } }
+  .detail-row div span:first-child { color: var(--text-secondary); margin-right: 6px; }
+  .section-title { font-size: 13px; color: var(--text-secondary); margin: 0 0 10px; }
+  .table-scroll { overflow-x: auto; }
+  .loading { text-align: center; padding: 2rem; color: var(--text-secondary); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>🏢 集團展覽管理中心</h1>
+    <span id="updated-label"></span>
+  </header>
+
+  <div id="loading" class="loading">資料載入中...</div>
+
+  <!-- 主畫面：總覽 + 一覽表 -->
+  <div id="view-main" class="hidden">
+    <div class="card">
+      <p class="section-title">2026 年度展覽進度</p>
+      <div class="stats-grid">
+        <div class="stat-box"><p>全年展覽數</p><p id="stat-total">-</p></div>
+        <div class="stat-box"><p>確定參加</p><p id="stat-confirmed">-</p></div>
+        <div class="stat-box"><p>評估中</p><p id="stat-evaluating">-</p></div>
+        <div class="stat-box"><p>已結案</p><p id="stat-done">-</p></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="section-title">展覽一覽（點任一列查看詳情）</p>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>展覽名稱</th><th>展期</th><th>地點</th><th>狀態</th></tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 詳情畫面 -->
+  <div id="view-detail" class="hidden">
+    <button class="back-btn" onclick="showMain()">← 返回總覽</button>
+    <div class="card" style="margin-top:10px;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+        <span id="d-name" style="font-size:16px; font-weight:600;"></span>
+        <span id="d-status" class="tag" style="margin-left:auto;"></span>
+      </div>
+      <p class="section-title">基本資訊</p>
+      <div class="detail-row">
+        <div><span>展期</span><span id="d-date"></span></div>
+        <div><span>地點</span><span id="d-place"></span></div>
+        <div><span>攤位編號</span><span id="d-booth"></span></div>
+        <div><span>攤位大小</span><span id="d-boothsize"></span></div>
+        <div><span>參展性質</span><span id="d-nature"></span></div>
+        <div><span>執行單位</span><span id="d-unit"></span></div>
+        <div><span>業務參展人</span><span id="d-salesperson"></span></div>
+      </div>
+    </div>
+    <div class="card">
+      <p class="section-title">預算與補助</p>
+      <div class="detail-row">
+        <div><span>預算費用</span><span id="d-budget"></span></div>
+        <div><span>補助申請金額</span><span id="d-subsidy-apply"></span></div>
+        <div><span>補助核准金額</span><span id="d-subsidy-approved"></span></div>
+        <div><span>補助核銷狀態</span><span id="d-subsidy-status"></span></div>
+        <div><span>需要結案簡報</span><span id="d-report-needed"></span></div>
+      </div>
+    </div>
+    <div class="card">
+      <p class="section-title">備註說明</p>
+      <p id="d-note" style="font-size:13px; margin:0; color:var(--text-secondary);"></p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ====== 設定區：之後要換資料來源時，只要改這個網址 ======
+const SHEET_ID = "1TOmdc6rHdLA5IqUziGm7rUTW10sUkRbmQtH_BM6rEyw";
+const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
+
+let exhibitions = [];
+
+function parseCSV(text) {
+  // 簡易 CSV 解析（處理欄位中可能包含逗號的情況，使用引號）
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i+1] === '"') { field += '"'; i++; }
+        else { inQuotes = false; }
+      } else { field += c; }
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else if (c === '\r') { /* skip */ }
+      else { field += c; }
+    }
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+const STATUS_COLOR = {
+  '確定參加': 'blue', '評估中': 'amber', '已結案': 'gray', '暫不參加': 'gray'
+};
+
+function statusTag(status) {
+  const color = STATUS_COLOR[status] || 'gray';
+  return `<span class="tag tag-${color}">${status || '-'}</span>`;
+}
+
+function fmtMoney(v) {
+  if (!v) return '-';
+  const n = Number(v);
+  if (isNaN(n)) return v;
+  return 'NT$ ' + n.toLocaleString();
+}
+
+function loadData() {
+  fetch(CSV_URL)
+    .then(res => res.text())
+    .then(text => {
+      const rows = parseCSV(text);
+      const headers = rows[0].map(h => h.trim());
+      exhibitions = rows.slice(1).filter(r => r.length > 1 && r[1]).map(r => {
+        const obj = {};
+        headers.forEach((h, i) => obj[h] = (r[i] || '').trim());
+        return obj;
+      });
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('updated-label').textContent = '更新時間：' + new Date().toLocaleString('zh-TW');
+      renderStats();
+      renderTable();
+      showMain();
+    })
+    .catch(err => {
+      document.getElementById('loading').textContent = '資料載入失敗，請確認 Google Sheet 分享權限是否設定為「知道連結的任何人皆可檢視」。';
+      console.error(err);
+    });
+}
+
+function renderStats() {
+  document.getElementById('stat-total').textContent = exhibitions.length;
+  document.getElementById('stat-confirmed').textContent = exhibitions.filter(e => e['參展狀態'] === '確定參加').length;
+  document.getElementById('stat-evaluating').textContent = exhibitions.filter(e => e['參展狀態'] === '評估中').length;
+  document.getElementById('stat-done').textContent = exhibitions.filter(e => e['參展狀態'] === '已結案').length;
+}
+
+function renderTable() {
+  const tbody = document.getElementById('table-body');
+  tbody.innerHTML = '';
+  exhibitions.forEach((ex, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${ex['展覽名稱'] || ''}</strong></td>
+      <td>${shortDate(ex['展期開始'])} - ${shortDate(ex['展期結束'])}</td>
+      <td>${ex['地點城市'] || ''}</td>
+      <td>${statusTag(ex['參展狀態'])}</td>
+    `;
+    tr.onclick = () => showDetail(idx);
+    tbody.appendChild(tr);
+  });
+}
+
+function shortDate(d) {
+  if (!d) return '-';
+  const parts = d.split('/');
+  return parts.length === 3 ? `${parts[1]}/${parts[2]}` : d;
+}
+
+function showDetail(idx) {
+  const ex = exhibitions[idx];
+  document.getElementById('d-name').textContent = ex['展覽名稱'] || '';
+  document.getElementById('d-status').outerHTML = `<span id="d-status" class="tag tag-${STATUS_COLOR[ex['參展狀態']] || 'gray'}" style="margin-left:auto;">${ex['參展狀態'] || '-'}</span>`;
+  document.getElementById('d-date').textContent = `${ex['展期開始'] || ''} - ${ex['展期結束'] || ''}`;
+  document.getElementById('d-place').textContent = `${ex['地點城市'] || ''}${ex['國家'] ? '，' + ex['國家'] : ''}`;
+  document.getElementById('d-booth').textContent = ex['BoothNo'] || '-';
+  document.getElementById('d-boothsize').textContent = ex['BoothSize'] || '-';
+  document.getElementById('d-nature').textContent = ex['參展性質'] || '-';
+  document.getElementById('d-unit').textContent = ex['執行單位'] || '-';
+  document.getElementById('d-salesperson').textContent = ex['業務參展人'] || '-';
+  document.getElementById('d-budget').textContent = fmtMoney(ex['預算費用']);
+  document.getElementById('d-subsidy-apply').textContent = fmtMoney(ex['補助申請金額']);
+  document.getElementById('d-subsidy-approved').textContent = fmtMoney(ex['補助核准金額']);
+  document.getElementById('d-subsidy-status').textContent = ex['補助核銷狀態'] || '-';
+  document.getElementById('d-report-needed').textContent = ex['是否需要結案簡報'] || '-';
+  document.getElementById('d-note').textContent = ex['備註說明'] || '（無）';
+
+  document.getElementById('view-main').classList.add('hidden');
+  document.getElementById('view-detail').classList.remove('hidden');
+  window.scrollTo(0, 0);
+}
+
+function showMain() {
+  document.getElementById('view-detail').classList.add('hidden');
+  document.getElementById('view-main').classList.remove('hidden');
+}
+
+loadData();
+</script>
+</body>
+</html>
