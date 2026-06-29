@@ -107,6 +107,15 @@
   .file-card:hover { background: var(--gray-soft); }
   .file-card .arrow { margin-left: auto; color: var(--text-tertiary); }
   .empty-note { font-size: 12.5px; color: var(--text-tertiary); }
+
+  .nature-badge { font-size: 10.5px; color: var(--text-tertiary); background: var(--gray-bg); padding: 2px 8px; border-radius: 6px; margin-left: 8px; font-weight: 500; }
+
+  .detail-tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+  .detail-tab { font-size: 13px; font-weight: 500; padding: 9px 14px; cursor: pointer; color: var(--text-tertiary); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .detail-tab.active { color: var(--text); border-bottom-color: var(--text); font-weight: 600; }
+  .tab-panel.hidden { display: none; }
+
+  .hero-box .hero-icon { font-size: 13px; margin-right: 3px; }
 </style>
 </head>
 <body>
@@ -151,51 +160,47 @@
         <span id="d-status" class="tag" style="margin-left:auto;"></span>
       </div>
       <div class="hero-grid">
-        <div class="hero-box"><p>展期</p><p id="d-date"></p></div>
-        <div class="hero-box"><p>地點</p><p id="d-place"></p></div>
-        <div class="hero-box"><p>攤位</p><p id="d-booth"></p></div>
+        <div class="hero-box"><p><span class="hero-icon">📅</span>展期</p><p id="d-date"></p></div>
+        <div class="hero-box"><p><span class="hero-icon">📍</span>地點</p><p id="d-place"></p></div>
+        <div class="hero-box"><p><span class="hero-icon">🏷️</span>攤位</p><p id="d-booth"></p></div>
+        <div class="hero-box"><p><span class="hero-icon">📐</span>攤位大小</p><p id="d-boothsize"></p></div>
       </div>
     </div>
 
     <div class="card">
-      <p class="section-title">其他資訊</p>
-      <div class="detail-row">
-        <div><span>攤位大小</span><span id="d-boothsize"></span></div>
-        <div><span>參展性質</span><span id="d-nature"></span></div>
-        <div><span>執行單位</span><span id="d-unit"></span></div>
-        <div><span>業務參展人</span><span id="d-salesperson"></span></div>
+      <div class="detail-tabs">
+        <div class="detail-tab active" data-tab="basic" onclick="switchTab('basic')">基本資訊</div>
+        <div class="detail-tab" data-tab="budget" onclick="switchTab('budget')">預算與補助</div>
+        <div class="detail-tab" data-tab="files" onclick="switchTab('files')">文件與素材</div>
       </div>
-    </div>
 
-    <div class="card">
-      <p class="section-title">預算與補助</p>
-      <div class="detail-row">
-        <div><span>預算費用</span><span id="d-budget"></span></div>
-        <div><span>補助申請金額</span><span id="d-subsidy-apply"></span></div>
-        <div><span>補助核准金額</span><span id="d-subsidy-approved"></span></div>
-        <div><span>補助核銷狀態</span><span id="d-subsidy-status"></span></div>
-        <div><span>需要結案簡報</span><span id="d-report-needed"></span></div>
+      <div class="tab-panel" id="tab-basic">
+        <div class="detail-row" style="margin-bottom:16px;">
+          <div><span>參展性質</span><span id="d-nature"></span></div>
+          <div><span>執行單位</span><span id="d-unit"></span></div>
+          <div><span>業務參展人</span><span id="d-salesperson"></span></div>
+        </div>
+        <p class="section-title">備註說明</p>
+        <p id="d-note" style="font-size:13px; margin:0; color:var(--text-secondary);"></p>
       </div>
-    </div>
 
-    <div class="card">
-      <p class="section-title">現場照片</p>
-      <div id="d-photos"></div>
-    </div>
+      <div class="tab-panel hidden" id="tab-budget">
+        <div class="detail-row">
+          <div><span>預算費用</span><span id="d-budget"></span></div>
+          <div><span>補助申請金額</span><span id="d-subsidy-apply"></span></div>
+          <div><span>補助核准金額</span><span id="d-subsidy-approved"></span></div>
+          <div><span>補助核銷狀態</span><span id="d-subsidy-status"></span></div>
+        </div>
+      </div>
 
-    <div class="card">
-      <p class="section-title">宣傳素材</p>
-      <div id="d-promo"></div>
-    </div>
-
-    <div class="card">
-      <p class="section-title">結案報告</p>
-      <div id="d-report"></div>
-    </div>
-
-    <div class="card">
-      <p class="section-title">備註說明</p>
-      <p id="d-note" style="font-size:13px; margin:0; color:var(--text-secondary);"></p>
+      <div class="tab-panel hidden" id="tab-files">
+        <p class="section-title" style="margin-top:0;">現場照片</p>
+        <div id="d-photos" style="margin-bottom:16px;"></div>
+        <p class="section-title">宣傳素材</p>
+        <div id="d-promo" style="margin-bottom:16px;"></div>
+        <p class="section-title">結案報告　<span id="d-report-needed" style="font-weight:400; text-transform:none; letter-spacing:0; color:var(--text-tertiary);"></span></p>
+        <div id="d-report"></div>
+      </div>
     </div>
   </div>
 
@@ -309,7 +314,7 @@ function exRowHtml(ex) {
   const color = STATUS_COLOR[ex['參展狀態']] || 'gray';
   return `
     <div class="ex-row c-${color}" onclick="showDetail(${idx})">
-      <span class="ex-name">${ex['展覽名稱'] || ''}</span>
+      <span class="ex-name">${ex['展覽名稱'] || ''}${ex['參展性質'] ? `<span class="nature-badge">${ex['參展性質']}</span>` : ''}</span>
       <span class="ex-date">${shortDate(ex['展期開始'])} - ${shortDate(ex['展期結束'])}</span>
       <span class="ex-place">${ex['地點城市'] || ''}</span>
       ${statusTag(ex['參展狀態'])}
@@ -323,11 +328,11 @@ function renderGroupedList(list) {
   const skipped = list.filter(e => e['參展狀態'] === '暫不參加');
 
   document.getElementById('group-confirmed').innerHTML = confirmed.length
-    ? `<p class="group-label">確定參加</p>${confirmed.map(exRowHtml).join('')}` : '';
+    ? `<p class="group-label">確定參加（${confirmed.length}）</p>${confirmed.map(exRowHtml).join('')}` : '';
   document.getElementById('group-evaluating').innerHTML = evaluating.length
-    ? `<p class="group-label">評估中</p>${evaluating.map(exRowHtml).join('')}` : '';
+    ? `<p class="group-label">評估中（${evaluating.length}）</p>${evaluating.map(exRowHtml).join('')}` : '';
   document.getElementById('group-done').innerHTML = done.length
-    ? `<p class="group-label">已結案</p>${done.map(exRowHtml).join('')}` : '';
+    ? `<p class="group-label">已結案（${done.length}）</p>${done.map(exRowHtml).join('')}` : '';
   document.getElementById('group-skipped').innerHTML = skipped.length
     ? `<p class="collapse-toggle" onclick="toggleSkipped()">▸ 暫不參加（${skipped.length}）— 點擊展開</p>
        <div id="skipped-list" class="collapsed">${skipped.map(exRowHtml).join('')}</div>` : '';
@@ -351,8 +356,14 @@ function fileCard(label, url, icon) {
   </a>`;
 }
 
+function switchTab(name) {
+  document.querySelectorAll('.detail-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.id !== 'tab-' + name));
+}
+
 function showDetail(idx) {
   const ex = exhibitions[idx];
+  switchTab('basic');
   document.getElementById('d-name').textContent = ex['展覽名稱'] || '';
   document.getElementById('d-status').outerHTML = `<span id="d-status" class="tag tag-${STATUS_COLOR[ex['參展狀態']] || 'gray'}" style="margin-left:auto;">${ex['參展狀態'] || '-'}</span>`;
   document.getElementById('d-date').textContent = `${shortDate(ex['展期開始'])} - ${shortDate(ex['展期結束'])}`;
@@ -366,7 +377,7 @@ function showDetail(idx) {
   document.getElementById('d-subsidy-apply').textContent = fmtMoney(ex['補助申請金額']);
   document.getElementById('d-subsidy-approved').textContent = fmtMoney(ex['補助核准金額']);
   document.getElementById('d-subsidy-status').textContent = ex['補助核銷狀態'] || '-';
-  document.getElementById('d-report-needed').textContent = ex['是否需要結案簡報'] || '-';
+  document.getElementById('d-report-needed').textContent = ex['是否需要結案簡報'] === '是' ? '（需要結案簡報）' : '';
   document.getElementById('d-note').textContent = ex['備註說明'] || '（無）';
 
   // 照片：改為單一資料夾連結（欄位：照片資料夾連結）
