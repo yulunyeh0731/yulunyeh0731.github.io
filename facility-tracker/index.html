@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>總務工作追蹤系統</title>
+<style>
+  :root{
+    --surface-0:#f5f4f0; --surface-1:#fbfaf7; --surface-2:#ffffff;
+    --text-primary:#1a1a18; --text-secondary:#5f5e5a; --text-muted:#8a8983;
+    --border:#e2e0da; --border-strong:#c7c5bd;
+    --accent:#185fa5; --bg-accent:#e6f1fb;
+    --red:#a32d2d; --bg-red:#fcebeb;
+    --amber:#854f0b; --bg-amber:#faeeda;
+    --purple:#3c3489; --bg-purple:#eeedfe;
+    --green:#27500a; --bg-green:#eaf3de;
+    --radius:8px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,"PingFang TC","Microsoft JhengHei",sans-serif;
+    background:var(--surface-0); color:var(--text-primary); margin:0; padding:24px 16px 80px;
+  }
+  .wrap{max-width:760px; margin:0 auto;}
+  h1{font-size:20px; font-weight:600; margin:0 0 4px;}
+  .sub{color:var(--text-secondary); font-size:13px; margin:0 0 20px;}
+  .toolbar{display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:8px;}
+  .filters{display:flex; gap:6px; flex-wrap:wrap;}
+  button{
+    font-family:inherit; font-size:13px; padding:8px 14px; border-radius:var(--radius);
+    border:0.5px solid var(--border-strong); background:var(--surface-2); color:var(--text-primary);
+    cursor:pointer;
+  }
+  button:hover{background:var(--surface-1);}
+  button.active{background:var(--surface-1); border-color:var(--accent); color:var(--accent);}
+  button.primary{border-color:var(--accent); color:var(--accent); font-weight:500;}
+  button:disabled{opacity:0.6; cursor:default;}
+  .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; margin-bottom:20px;}
+  .stat{background:var(--surface-2); border-radius:var(--radius); padding:14px; border:0.5px solid var(--border);}
+  .stat .label{font-size:12px; color:var(--text-secondary); margin:0 0 4px;}
+  .stat .value{font-size:22px; font-weight:600; margin:0;}
+  .card{background:var(--surface-2); border:0.5px solid var(--border); border-radius:10px; padding:14px 16px; margin-bottom:20px;}
+  .card h3{font-size:14px; font-weight:600; margin:0 0 4px;}
+  .card .hint{font-size:12px; color:var(--text-muted); margin:0 0 12px;}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .field{display:flex; flex-direction:column; gap:4px;}
+  .field.full{grid-column:1/-1;}
+  label{font-size:12px; color:var(--text-secondary);}
+  input,select,textarea{
+    font-family:inherit; font-size:14px; padding:8px 10px; border-radius:var(--radius);
+    border:0.5px solid var(--border-strong); background:var(--surface-2); color:var(--text-primary);
+  }
+  textarea{resize:vertical;}
+  .period-toggle{display:flex; border:0.5px solid var(--border-strong); border-radius:var(--radius); overflow:hidden;}
+  .period-toggle button{border:none; border-radius:0; flex:1;}
+  .period-toggle button.on{background:var(--surface-1); font-weight:600;}
+  .time-row{display:flex; gap:6px;}
+  .actions{display:flex; gap:8px; margin-top:14px;}
+  .list-row{background:var(--surface-2); border:0.5px solid var(--border); border-radius:var(--radius); padding:12px 14px; margin-bottom:8px; cursor:pointer;}
+  .list-row:hover{border-color:var(--border-strong);}
+  .row-top{display:flex; justify-content:space-between; align-items:flex-start; gap:8px;}
+  .row-title{font-weight:600; font-size:14px; margin:0;}
+  .row-desc{font-size:13px; color:var(--text-secondary); margin:2px 0 0;}
+  .row-meta{font-size:12px; color:var(--text-muted); margin:6px 0 0;}
+  .badge{font-size:12px; padding:3px 10px; border-radius:var(--radius); white-space:nowrap; font-weight:500;}
+  .b-red{background:var(--bg-red); color:var(--red);}
+  .b-amber{background:var(--bg-amber); color:var(--amber);}
+  .b-purple{background:var(--bg-purple); color:var(--purple);}
+  .b-green{background:var(--bg-green); color:var(--green);}
+  .empty{color:var(--text-muted); font-size:14px; padding:20px 0; text-align:center;}
+  .syncbar{font-size:13px; color:var(--text-secondary); margin-bottom:10px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>總務工作追蹤系統</h1>
+  <p class="sub">水電、空調、漏水等大樓維修案件登記與進度追蹤</p>
+
+  <div id="syncBar" class="syncbar" style="display:none;"></div>
+
+  <div class="toolbar">
+    <div class="filters" id="filters"></div>
+    <button class="primary" id="newBtn">+ 快速建檔</button>
+  </div>
+
+  <div class="stats" id="statCards"></div>
+
+  <div id="formWrap" style="display:none;"></div>
+
+  <div id="loadingMsg" class="empty">正在讀取 Google Sheet 資料...</div>
+  <div id="list"></div>
+</div>
+
+<script>
+const SHEET_ID = '1da1UXW0tCFvgWI2Ocz6v3afV3Gf45cCMI8EmZBh2wlU';
+const SHEET_NAME = '案件紀錄';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxqSM31tNo0lop1TzhYKvH7qzQISnGpujL9yiBCN7vDdmJJ1gOo8lPnPv6H0z7WkNR5/exec';
+const HEADERS = ['案件編號','通報日期','通報時間(小時)','通報方式','通報人','分機','問題類別','地點(樓層)','地點(細節)','問題描述','緊急程度','負責人/廠商','處理狀態','回覆同仁時間','完成時間','處理記錄/備註','原始申請單號'];
+
+const CATS = ["電力照明","給排水・漏水","空調","機械停車車梯","辦公設備(事務機/電話)","門禁/監控設備","清潔","一般修繕","其他"];
+const STATUS = ["待處理","處理中","待外包/待料","已完成"];
+const STATUS_CLASS = {"待處理":"b-red","處理中":"b-amber","待外包/待料":"b-purple","已完成":"b-green"};
+const PRIORITY = ["緊急","一般","低"];
+const CHANNELS = ["電話","口頭","填單","Email"];
+
+let cases = [];
+let filter = "全部";
+
+function pad(n){ return String(n).padStart(2,'0'); }
+function todayStr(){ const d = new Date(); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+function nowHour(){ return new Date().getHours(); }
+
+function parseGvizValue(cell){
+  if(!cell || cell.v === null || cell.v === undefined) return '';
+  const v = cell.v;
+  if(typeof v === 'string' && v.startsWith('Date(')){
+    const m = v.match(/Date\((\d+),(\d+),(\d+)/);
+    if(m) return `${m[1]}-${pad(+m[2]+1)}-${pad(+m[3])}`;
+  }
+  return String(v);
+}
+
+function to12(h){ const period = h<12 ? '上午' : '下午'; let h12 = h%12; if(h12===0) h12=12; return {period, h12}; }
+function from12(period, h12){ let h = h12 % 12; if(period==='下午') h += 12; if(h12===12 && period==='上午') h = 0; return h; }
+
+function timePickerHtml(idPrefix, selectedHour){
+  const {period, h12} = to12(selectedHour);
+  let opts = '';
+  for(let i=1;i<=12;i++){ opts += `<option value="${i}" ${i===h12?'selected':''}>${i} 點</option>`; }
+  return `
+    <div class="time-row" data-active-period="${period}" id="${idPrefix}_wrap">
+      <div class="period-toggle">
+        <button type="button" data-period="上午" class="period-btn-${idPrefix} ${period==='上午'?'on':''}">上午</button>
+        <button type="button" data-period="下午" class="period-btn-${idPrefix} ${period==='下午'?'on':''}">下午</button>
+      </div>
+      <select id="${idPrefix}_h12" style="flex:1;">${opts}</select>
+    </div>
+  `;
+}
+function wirePeriodButtons(idPrefix){
+  document.querySelectorAll('.period-btn-'+idPrefix).forEach(btn=>{
+    btn.onclick = ()=>{
+      document.querySelectorAll('.period-btn-'+idPrefix).forEach(b=> b.classList.remove('on'));
+      btn.classList.add('on');
+      document.getElementById(idPrefix+'_wrap').dataset.activePeriod = btn.dataset.period;
+    };
+  });
+}
+function getPickedHour(idPrefix){
+  const period = document.getElementById(idPrefix+'_wrap').dataset.activePeriod;
+  const h12 = parseInt(document.getElementById(idPrefix+'_h12').value);
+  return from12(period, h12);
+}
+
+async function loadFromSheet(){
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_NAME)}`;
+  const res = await fetch(url);
+  const text = await res.text();
+  const jsonStr = text.substring(text.indexOf('{'), text.lastIndexOf('}')+1);
+  const data = JSON.parse(jsonStr);
+  const rows = data.table.rows;
+  cases = rows.map(r=>{
+    const c = r.c;
+    const obj = {};
+    HEADERS.forEach((h, i)=>{ obj[h] = c[i] ? parseGvizValue(c[i]) : ''; });
+    return obj;
+  }).filter(o=>o['案件編號']);
+}
+
+async function postToSheet(payload){
+  const res = await fetch(SCRIPT_URL, {
+    method: 'POST',
+    headers: {'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify(payload)
+  });
+  return res.json();
+}
+
+function renderFilters(){
+  const wrap = document.getElementById('filters');
+  wrap.innerHTML = '';
+  ['全部', ...STATUS].forEach(s=>{
+    const b = document.createElement('button');
+    b.textContent = s;
+    if(s===filter) b.classList.add('active');
+    b.onclick = ()=>{ filter = s; render(); };
+    wrap.appendChild(b);
+  });
+}
+
+function renderStats(){
+  const wrap = document.getElementById('statCards');
+  wrap.innerHTML = '';
+  const counts = {};
+  STATUS.forEach(s=> counts[s] = cases.filter(c=>c['處理狀態']===s).length);
+  const done = cases.filter(c=>c['處理狀態']==='已完成' && c['通報日期'] && c['完成時間']);
+  let avgD = '—';
+  if(done.length){
+    const totalMs = done.reduce((sum,c)=> sum + (new Date(c['完成時間']) - new Date(c['通報日期'])), 0);
+    avgD = (totalMs/done.length/86400000).toFixed(1) + ' 天';
+  }
+  const items = [
+    {label:'總案件數', value: cases.length},
+    {label:'待處理', value: counts['待處理']},
+    {label:'處理中/待外包', value: counts['處理中']+counts['待外包/待料']},
+    {label:'平均完成天數', value: avgD}
+  ];
+  items.forEach(it=>{
+    const d = document.createElement('div');
+    d.className = 'stat';
+    d.innerHTML = `<p class="label">${it.label}</p><p class="value">${it.value}</p>`;
+    wrap.appendChild(d);
+  });
+}
+
+function showSync(msg){
+  const bar = document.getElementById('syncBar');
+  bar.style.display = 'block';
+  bar.textContent = msg;
+}
+function hideSync(){ document.getElementById('syncBar').style.display = 'none'; }
+
+function openQuickForm(){
+  const wrap = document.getElementById('formWrap');
+  wrap.style.display = 'block';
+  wrap.innerHTML = `
+    <div class="card">
+      <h3>快速建檔</h3>
+      <p class="hint">關鍵資訊現在就寫,其他處理細節晚一點補。</p>
+      <div class="grid2">
+        <div class="field"><label>通報人</label><input id="q_reporter" placeholder="姓名/部門"></div>
+        <div class="field"><label>分機</label><input id="q_ext" placeholder="例如 123"></div>
+        <div class="field"><label>通報日期</label><input type="date" id="q_date" value="${todayStr()}"></div>
+        <div class="field"><label>通報時間</label>${timePickerHtml('q', nowHour())}</div>
+        <div class="field"><label>通報方式</label><select id="q_channel">${CHANNELS.map(x=>`<option>${x}</option>`).join('')}</select></div>
+        <div class="field"><label>問題類別</label><select id="q_category">${CATS.map(x=>`<option>${x}</option>`).join('')}</select></div>
+        <div class="field full"><label>地點</label><input id="q_location" placeholder="例如 6F 男廁"></div>
+        <div class="field full"><label>簡述</label><input id="q_desc" placeholder="例如 馬桶後方漏水"></div>
+      </div>
+      <div class="actions">
+        <button class="primary" id="quickSaveBtn">建立案件</button>
+        <button id="quickCancelBtn">取消</button>
+      </div>
+    </div>
+  `;
+  wirePeriodButtons('q');
+  document.getElementById('quickCancelBtn').onclick = ()=>{ wrap.style.display='none'; wrap.innerHTML=''; };
+  document.getElementById('quickSaveBtn').onclick = async ()=>{
+    const btn = document.getElementById('quickSaveBtn');
+    btn.disabled = true; btn.textContent = '建立中...';
+    const hour = getPickedHour('q');
+    const payload = {
+      '通報日期': document.getElementById('q_date').value,
+      '通報時間(小時)': pad(hour)+':00',
+      '通報方式': document.getElementById('q_channel').value,
+      '通報人': document.getElementById('q_reporter').value,
+      '分機': document.getElementById('q_ext').value,
+      '問題類別': document.getElementById('q_category').value,
+      '地點(樓層)': '',
+      '地點(細節)': document.getElementById('q_location').value,
+      '問題描述': document.getElementById('q_desc').value,
+      '緊急程度': '一般',
+      '處理狀態': '待處理'
+    };
+    try{
+      const result = await postToSheet(payload);
+      payload['案件編號'] = result.caseId;
+      cases.unshift(payload);
+      wrap.style.display='none'; wrap.innerHTML='';
+      render();
+    }catch(e){
+      alert('建立失敗,請檢查網路連線後再試一次');
+      btn.disabled = false; btn.textContent = '建立案件';
+    }
+  };
+}
+
+function openFullForm(c){
+  const wrap = document.getElementById('formWrap');
+  wrap.style.display = 'block';
+  const reportedHour = c['通報時間(小時)'] ? parseInt(c['通報時間(小時)']) : nowHour();
+  wrap.innerHTML = `
+    <div class="card">
+      <h3>編輯案件 ${c['案件編號']}</h3>
+      <div class="grid2">
+        <div class="field"><label>通報人</label><input id="f_reporter" value="${c['通報人']||''}"></div>
+        <div class="field"><label>分機</label><input id="f_ext" value="${c['分機']||''}"></div>
+        <div class="field"><label>通報日期</label><input type="date" id="f_date" value="${c['通報日期']||todayStr()}"></div>
+        <div class="field"><label>通報時間</label>${timePickerHtml('f', reportedHour)}</div>
+        <div class="field"><label>通報方式</label><select id="f_channel">${CHANNELS.map(x=>`<option ${x===c['通報方式']?'selected':''}>${x}</option>`).join('')}</select></div>
+        <div class="field"><label>問題類別</label><select id="f_category">${CATS.map(x=>`<option ${x===c['問題類別']?'selected':''}>${x}</option>`).join('')}</select></div>
+        <div class="field"><label>地點(樓層)</label><input id="f_floor" value="${c['地點(樓層)']||''}"></div>
+        <div class="field"><label>地點(細節)</label><input id="f_location" value="${c['地點(細節)']||''}"></div>
+        <div class="field"><label>緊急程度</label><select id="f_priority">${PRIORITY.map(x=>`<option ${x===c['緊急程度']?'selected':''}>${x}</option>`).join('')}</select></div>
+        <div class="field"><label>負責人/廠商</label><input id="f_assignee" value="${c['負責人/廠商']||''}"></div>
+        <div class="field"><label>處理狀態</label><select id="f_status">${STATUS.map(x=>`<option ${x===c['處理狀態']?'selected':''}>${x}</option>`).join('')}</select></div>
+        <div class="field"><label>完成日期</label><input type="date" id="f_completed" value="${c['完成時間']||''}"></div>
+      </div>
+      <div class="field full" style="margin-top:10px;"><label>問題描述</label><textarea id="f_desc" rows="2">${c['問題描述']||''}</textarea></div>
+      <div class="field full" style="margin-top:10px;"><label>處理記錄/備註</label><textarea id="f_notes" rows="2">${c['處理記錄/備註']||''}</textarea></div>
+      <div class="actions">
+        <button class="primary" id="saveBtn">儲存</button>
+        <button id="cancelBtn">取消</button>
+      </div>
+    </div>
+  `;
+  wirePeriodButtons('f');
+  document.getElementById('cancelBtn').onclick = ()=>{ wrap.style.display='none'; wrap.innerHTML=''; };
+  document.getElementById('saveBtn').onclick = async ()=>{
+    const btn = document.getElementById('saveBtn');
+    btn.disabled = true; btn.textContent = '儲存中...';
+    const hour = getPickedHour('f');
+    const payload = {
+      '案件編號': c['案件編號'],
+      '通報日期': document.getElementById('f_date').value,
+      '通報時間(小時)': pad(hour)+':00',
+      '通報方式': document.getElementById('f_channel').value,
+      '通報人': document.getElementById('f_reporter').value,
+      '分機': document.getElementById('f_ext').value,
+      '問題類別': document.getElementById('f_category').value,
+      '地點(樓層)': document.getElementById('f_floor').value,
+      '地點(細節)': document.getElementById('f_location').value,
+      '問題描述': document.getElementById('f_desc').value,
+      '緊急程度': document.getElementById('f_priority').value,
+      '負責人/廠商': document.getElementById('f_assignee').value,
+      '處理狀態': document.getElementById('f_status').value,
+      '完成時間': document.getElementById('f_completed').value,
+      '處理記錄/備註': document.getElementById('f_notes').value,
+      '原始申請單號': c['原始申請單號']||''
+    };
+    try{
+      await postToSheet(payload);
+      const idx = cases.findIndex(x=>x['案件編號']===c['案件編號']);
+      if(idx>=0) cases[idx] = payload;
+      wrap.style.display='none'; wrap.innerHTML='';
+      render();
+    }catch(e){
+      alert('儲存失敗,請檢查網路連線後再試一次');
+      btn.disabled = false; btn.textContent = '儲存';
+    }
+  };
+}
+
+function renderList(){
+  const wrap = document.getElementById('list');
+  wrap.innerHTML = '';
+  let list = cases.slice().sort((a,b)=> new Date(b['通報日期']) - new Date(a['通報日期']));
+  if(filter !== '全部') list = list.filter(c=>c['處理狀態']===filter);
+  if(!list.length){
+    wrap.innerHTML = '<p class="empty">目前沒有符合條件的案件。</p>';
+    return;
+  }
+  list.forEach(c=>{
+    const row = document.createElement('div');
+    row.className = 'list-row';
+    const status = c['處理狀態'] || '待處理';
+    const cls = STATUS_CLASS[status] || 'b-red';
+    const loc = [c['地點(樓層)'], c['地點(細節)']].filter(Boolean).join(' ');
+    row.innerHTML = `
+      <div class="row-top">
+        <div>
+          <p class="row-title">${loc || '(未填地點)'} · ${c['問題類別']||''}</p>
+          <p class="row-desc">${c['問題描述'] || ''}</p>
+          <p class="row-meta">通報 ${c['通報日期']||'—'} ・ ${c['通報人']||'—'} ${c['負責人/廠商']?'・負責人 '+c['負責人/廠商']:''}</p>
+        </div>
+        <span class="badge ${cls}">${status}</span>
+      </div>
+    `;
+    row.onclick = ()=> openFullForm(c);
+    wrap.appendChild(row);
+  });
+}
+
+function render(){
+  renderFilters();
+  renderStats();
+  renderList();
+}
+
+document.getElementById('newBtn').onclick = openQuickForm;
+
+(async function init(){
+  try{
+    await loadFromSheet();
+    document.getElementById('loadingMsg').style.display = 'none';
+    render();
+  }catch(e){
+    document.getElementById('loadingMsg').textContent = '讀取失敗,請確認 Google Sheet 已開放「知道連結的任何人」檢視權限,或檢查網路連線。';
+  }
+})();
+</script>
+</body>
+</html>
