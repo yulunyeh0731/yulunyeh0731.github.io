@@ -23,7 +23,16 @@
   }
   .wrap{max-width:760px; margin:0 auto;}
   h1{font-size:20px; font-weight:600; margin:0 0 4px;}
-  .sub{color:var(--text-secondary); font-size:13px; margin:0 0 20px;}
+  .sub{color:var(--text-secondary); font-size:13px; margin:0 0 16px;}
+
+  .tabs{display:flex; gap:4px; margin-bottom:16px; border-bottom:0.5px solid var(--border);}
+  .tab-btn{
+    font-family:inherit; font-size:14px; padding:10px 16px; border:none; background:none;
+    color:var(--text-secondary); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px;
+  }
+  .tab-btn.active{color:var(--accent); border-bottom-color:var(--accent); font-weight:600;}
+  .tab-btn:hover{color:var(--text-primary);}
+
   .toolbar{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;}
   .filters{display:flex; gap:6px; flex-wrap:wrap;}
   .filter-row2{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;}
@@ -40,8 +49,11 @@
   button:disabled{opacity:0.6; cursor:default;}
   .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; margin-bottom:20px;}
   .stat{background:var(--surface-2); border-radius:var(--radius); padding:14px; border:0.5px solid var(--border);}
+  .stat.warn{border-color:var(--red); background:var(--bg-red);}
   .stat .label{font-size:12px; color:var(--text-secondary); margin:0 0 4px;}
+  .stat.warn .label{color:var(--red);}
   .stat .value{font-size:22px; font-weight:600; margin:0;}
+  .stat.warn .value{color:var(--red);}
   .card{background:var(--surface-2); border:0.5px solid var(--border); border-radius:10px; padding:14px 16px; margin-bottom:20px;}
   .card h3{font-size:14px; font-weight:600; margin:0 0 4px;}
   .card .hint{font-size:12px; color:var(--text-muted); margin:0 0 12px;}
@@ -70,10 +82,12 @@
   .group-body{padding-top:8px;}
   .list-row{background:var(--surface-2); border:0.5px solid var(--border); border-radius:var(--radius); padding:12px 14px; margin-bottom:8px; cursor:pointer;}
   .list-row:hover{border-color:var(--border-strong);}
+  .list-row.overdue{border-left:3px solid var(--red);}
   .row-top{display:flex; justify-content:space-between; align-items:flex-start; gap:8px;}
   .row-title{font-weight:600; font-size:14px; margin:0;}
   .row-desc{font-size:13px; color:var(--text-secondary); margin:2px 0 0;}
   .row-meta{font-size:12px; color:var(--text-muted); margin:6px 0 0;}
+  .row-meta .overdue-tag{color:var(--red); font-weight:600;}
   .badge{font-size:12px; padding:3px 10px; border-radius:var(--radius); white-space:nowrap; font-weight:500;}
   .b-red{background:var(--bg-red); color:var(--red);}
   .b-amber{background:var(--bg-amber); color:var(--amber);}
@@ -81,6 +95,8 @@
   .b-green{background:var(--bg-green); color:var(--green);}
   .empty{color:var(--text-muted); font-size:14px; padding:20px 0; text-align:center;}
   .syncbar{font-size:13px; color:var(--text-secondary); margin-bottom:10px;}
+  .view{display:none;}
+  .view.active{display:block;}
 </style>
 </head>
 <body>
@@ -91,23 +107,38 @@
   <div id="syncBar" class="syncbar" style="display:none;"></div>
 
   <div class="toolbar">
-    <div class="filters" id="filters"></div>
+    <div class="tabs" id="tabs"></div>
     <button class="primary" id="newBtn">+ 快速建檔</button>
   </div>
-  <div class="filter-row2">
-    <select id="categoryFilter"></select>
-    <input class="search-box" id="searchBox" type="text" placeholder="搜尋地點、問題描述、通報人...">
-  </div>
-
-  <div class="stats" id="statCards"></div>
 
   <div id="formWrap" style="display:none;"></div>
 
   <div id="loadingMsg" class="empty">正在讀取 Google Sheet 資料...</div>
-  <div id="list"></div>
+
+  <!-- 待辦總覽 -->
+  <div class="view" id="view-todo">
+    <div class="stats" id="todoStats"></div>
+    <div id="todoList"></div>
+  </div>
+
+  <!-- 依樓層檢視 -->
+  <div class="view" id="view-floor">
+    <div class="stats" id="floorStats"></div>
+    <div id="floorList"></div>
+  </div>
+
+  <!-- 全部案件(搜尋) -->
+  <div class="view" id="view-search">
+    <div class="filters" id="statusFilters" style="margin-bottom:10px;"></div>
+    <div class="filter-row2">
+      <select id="categoryFilter"></select>
+      <input class="search-box" id="searchBox" type="text" placeholder="搜尋地點、問題描述、通報人...">
+    </div>
+    <div id="searchList"></div>
+  </div>
 </div>
 
-<datalist id="floorList">
+<datalist id="floorDatalist">
   <option value="B1"></option>
   <option value="1F"></option>
   <option value="2F"></option>
@@ -137,15 +168,23 @@ const PRIORITY = ["緊急","一般","低"];
 const CHANNELS = ["電話","口頭","填單","Email"];
 const FLOOR_OPTIONS = ["B1","1F","2F","3F","4F","5F","6F","7F","8F","9F","10F","11F","12F","頂樓"];
 const FLOOR_GROUP_ORDER = ["B1","1F","2F","3F","4F","5F","6F","7F","8F","9F","10F","11F","12F","頂樓","未填樓層"];
+const OVERDUE_DAYS = 3; // 待處理/處理中超過幾天視為逾期提醒
 
 let cases = [];
-let filter = "全部";
+let currentTab = 'todo';
+let statusFilter = "全部";
 let categoryFilter = "全部";
 let searchText = "";
 
 function pad(n){ return String(n).padStart(2,'0'); }
 function todayStr(){ const d = new Date(); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
 function nowHour(){ return new Date().getHours(); }
+function daysSince(dateStr){
+  if(!dateStr) return 0;
+  const d = new Date(dateStr);
+  const now = new Date();
+  return Math.floor((now - d) / 86400000);
+}
 
 function normalizeFloorLabel(floor){
   if(!floor || !String(floor).trim()) return '未填樓層';
@@ -200,8 +239,6 @@ function getPickedHour(idPrefix){
 }
 
 async function loadFromSheet(){
-  // headers=1 explicitly tells gviz the first row is a header row,
-  // so it is never mistakenly returned as a data row.
   const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_NAME)}&headers=1`;
   const res = await fetch(url);
   const text = await res.text();
@@ -215,7 +252,6 @@ async function loadFromSheet(){
     return obj;
   }).filter(o=>{
     if(!o['案件編號']) return false;
-    // defensive: drop any row that is actually the header row itself
     if(o['案件編號'] === '案件編號') return false;
     return true;
   });
@@ -230,15 +266,142 @@ async function postToSheet(payload){
   return res.json();
 }
 
-function renderFilters(){
-  const wrap = document.getElementById('filters');
+function renderTabs(){
+  const wrap = document.getElementById('tabs');
+  const tabs = [
+    {id:'todo', label:'待辦總覽'},
+    {id:'floor', label:'依樓層檢視'},
+    {id:'search', label:'全部案件'}
+  ];
   wrap.innerHTML = '';
+  tabs.forEach(t=>{
+    const b = document.createElement('button');
+    b.className = 'tab-btn' + (currentTab===t.id ? ' active' : '');
+    b.textContent = t.label;
+    b.onclick = ()=>{ currentTab = t.id; render(); };
+    wrap.appendChild(b);
+  });
+}
+
+function makeRow(c, opts){
+  opts = opts || {};
+  const row = document.createElement('div');
+  const status = c['處理狀態'] || '待處理';
+  const cls = STATUS_CLASS[status] || 'b-red';
+  const loc = [c['地點(樓層)'], c['地點(細節)']].filter(Boolean).join(' ');
+  const isActive = (status==='待處理' || status==='處理中' || status==='待外包/待料');
+  const age = daysSince(c['通報日期']);
+  const overdue = isActive && age >= OVERDUE_DAYS;
+  row.className = 'list-row' + (overdue ? ' overdue' : '');
+  const ageText = isActive ? `・已等待 <span class="${overdue?'overdue-tag':''}">${age} 天${overdue?' ⚠':''}</span>` : '';
+  row.innerHTML = `
+    <div class="row-top">
+      <div>
+        <p class="row-title">${loc || '(未填地點)'} · ${c['問題類別']||''}</p>
+        <p class="row-desc">${c['問題描述'] || ''}</p>
+        <p class="row-meta">通報 ${c['通報日期']||'—'} ・ ${c['通報人']||'—'} ${c['負責人/廠商']?'・負責人 '+c['負責人/廠商']:''} ${ageText}</p>
+      </div>
+      <span class="badge ${cls}">${status}</span>
+    </div>
+  `;
+  row.onclick = ()=> openFullForm(c);
+  return row;
+}
+
+// ---------- 待辦總覽 ----------
+function renderTodoView(){
+  const active = cases.filter(c=>{
+    const s = c['處理狀態'] || '待處理';
+    return s==='待處理' || s==='處理中' || s==='待外包/待料';
+  });
+  const overdueCount = active.filter(c=> daysSince(c['通報日期']) >= OVERDUE_DAYS).length;
+  const counts = {};
+  STATUS.forEach(s=> counts[s] = cases.filter(c=>c['處理狀態']===s).length);
+
+  const statsWrap = document.getElementById('todoStats');
+  statsWrap.innerHTML = '';
+  [
+    {label:'待處理中案件', value: active.length},
+    {label:'逾期(超過'+OVERDUE_DAYS+'天)', value: overdueCount, warn:true},
+    {label:'待外包/待料', value: counts['待外包/待料']},
+    {label:'今日已建立', value: cases.filter(c=>c['通報日期']===todayStr()).length}
+  ].forEach(it=>{
+    const d = document.createElement('div');
+    d.className = 'stat' + (it.warn ? ' warn' : '');
+    d.innerHTML = `<p class="label">${it.label}</p><p class="value">${it.value}</p>`;
+    statsWrap.appendChild(d);
+  });
+
+  const sorted = active.slice().sort((a,b)=> new Date(a['通報日期']) - new Date(b['通報日期']));
+  const listWrap = document.getElementById('todoList');
+  listWrap.innerHTML = '';
+  if(!sorted.length){
+    listWrap.innerHTML = '<p class="empty">目前沒有待處理的案件,太好了。</p>';
+    return;
+  }
+  sorted.forEach(c=> listWrap.appendChild(makeRow(c)));
+}
+
+// ---------- 依樓層檢視 ----------
+function renderFloorView(){
+  const statsWrap = document.getElementById('floorStats');
+  const byFloor = {};
+  cases.forEach(c=>{
+    const g = normalizeFloorLabel(c['地點(樓層)']);
+    byFloor[g] = (byFloor[g]||0) + 1;
+  });
+  const topFloor = Object.entries(byFloor).sort((a,b)=>b[1]-a[1])[0];
+  statsWrap.innerHTML = '';
+  [
+    {label:'總案件數', value: cases.length},
+    {label:'案件最多樓層', value: topFloor ? `${topFloor[0]} (${topFloor[1]}筆)` : '—'},
+    {label:'涵蓋樓層數', value: Object.keys(byFloor).length}
+  ].forEach(it=>{
+    const d = document.createElement('div');
+    d.className = 'stat';
+    d.innerHTML = `<p class="label">${it.label}</p><p class="value" style="font-size:18px;">${it.value}</p>`;
+    statsWrap.appendChild(d);
+  });
+
+  const wrap = document.getElementById('floorList');
+  wrap.innerHTML = '';
+  const groups = {};
+  cases.forEach(c=>{
+    const g = normalizeFloorLabel(c['地點(樓層)']);
+    if(!groups[g]) groups[g] = [];
+    groups[g].push(c);
+  });
+  const orderedKeys = Object.keys(groups).sort((a,b)=>{
+    let ia = FLOOR_GROUP_ORDER.indexOf(a); if(ia<0) ia = 999;
+    let ib = FLOOR_GROUP_ORDER.indexOf(b); if(ib<0) ib = 999;
+    if(ia!==ib) return ia-ib;
+    return a.localeCompare(b);
+  });
+  orderedKeys.forEach(key=>{
+    const items = groups[key].sort((a,b)=> new Date(b['通報日期']) - new Date(a['通報日期']));
+    const details = document.createElement('details');
+    details.className = 'group';
+    const summary = document.createElement('summary');
+    summary.innerHTML = `<span>${key}</span><span class="count">${items.length} 筆</span>`;
+    details.appendChild(summary);
+    const body = document.createElement('div');
+    body.className = 'group-body';
+    items.forEach(c=> body.appendChild(makeRow(c)));
+    details.appendChild(body);
+    wrap.appendChild(details);
+  });
+}
+
+// ---------- 全部案件(搜尋) ----------
+function renderSearchView(){
+  const filterWrap = document.getElementById('statusFilters');
+  filterWrap.innerHTML = '';
   ['全部', ...STATUS].forEach(s=>{
     const b = document.createElement('button');
     b.textContent = s;
-    if(s===filter) b.classList.add('active');
-    b.onclick = ()=>{ filter = s; render(); };
-    wrap.appendChild(b);
+    if(s===statusFilter) b.classList.add('active');
+    b.onclick = ()=>{ statusFilter = s; render(); };
+    filterWrap.appendChild(b);
   });
 
   const catSel = document.getElementById('categoryFilter');
@@ -247,37 +410,30 @@ function renderFilters(){
     catSel.onchange = ()=>{ categoryFilter = catSel.value; render(); };
     catSel.dataset.wired = '1';
   }
-
   const searchBox = document.getElementById('searchBox');
   if(!searchBox.dataset.wired){
     searchBox.oninput = ()=>{ searchText = searchBox.value.trim().toLowerCase(); render(); };
     searchBox.dataset.wired = '1';
   }
-}
 
-function renderStats(){
-  const wrap = document.getElementById('statCards');
-  wrap.innerHTML = '';
-  const counts = {};
-  STATUS.forEach(s=> counts[s] = cases.filter(c=>c['處理狀態']===s).length);
-  const done = cases.filter(c=>c['處理狀態']==='已完成' && c['通報日期'] && c['完成時間']);
-  let avgD = '—';
-  if(done.length){
-    const totalMs = done.reduce((sum,c)=> sum + (new Date(c['完成時間']) - new Date(c['通報日期'])), 0);
-    avgD = (totalMs/done.length/86400000).toFixed(1) + ' 天';
+  let list = cases.slice();
+  if(statusFilter !== '全部') list = list.filter(c=>c['處理狀態']===statusFilter);
+  if(categoryFilter !== '全部') list = list.filter(c=>c['問題類別']===categoryFilter);
+  if(searchText){
+    list = list.filter(c=>{
+      const hay = [c['地點(樓層)'],c['地點(細節)'],c['問題描述'],c['通報人'],c['問題類別']].join(' ').toLowerCase();
+      return hay.includes(searchText);
+    });
   }
-  const items = [
-    {label:'總案件數', value: cases.length},
-    {label:'待處理', value: counts['待處理']},
-    {label:'處理中/待外包', value: counts['處理中']+counts['待外包/待料']},
-    {label:'平均完成天數', value: avgD}
-  ];
-  items.forEach(it=>{
-    const d = document.createElement('div');
-    d.className = 'stat';
-    d.innerHTML = `<p class="label">${it.label}</p><p class="value">${it.value}</p>`;
-    wrap.appendChild(d);
-  });
+  list.sort((a,b)=> new Date(b['通報日期']) - new Date(a['通報日期']));
+
+  const wrap = document.getElementById('searchList');
+  wrap.innerHTML = '';
+  if(!list.length){
+    wrap.innerHTML = '<p class="empty">目前沒有符合條件的案件。</p>';
+    return;
+  }
+  list.forEach(c=> wrap.appendChild(makeRow(c)));
 }
 
 function openQuickForm(){
@@ -350,7 +506,7 @@ function openFullForm(c){
         <div class="field"><label>通報時間</label>${timePickerHtml('f', reportedHour)}</div>
         <div class="field"><label>通報方式</label><select id="f_channel">${CHANNELS.map(x=>`<option ${x===c['通報方式']?'selected':''}>${x}</option>`).join('')}</select></div>
         <div class="field"><label>問題類別</label><select id="f_category">${CATS.map(x=>`<option ${x===c['問題類別']?'selected':''}>${x}</option>`).join('')}</select></div>
-        <div class="field"><label>樓層</label><input id="f_floor" value="${c['地點(樓層)']||''}" list="floorList" placeholder="例如 6F"></div>
+        <div class="field"><label>樓層</label><input id="f_floor" value="${c['地點(樓層)']||''}" list="floorDatalist" placeholder="例如 6F"></div>
         <div class="field"><label>地點(細節)</label><input id="f_location" value="${c['地點(細節)']||''}"></div>
         <div class="field"><label>緊急程度</label><select id="f_priority">${PRIORITY.map(x=>`<option ${x===c['緊急程度']?'selected':''}>${x}</option>`).join('')}</select></div>
         <div class="field"><label>負責人/廠商</label><input id="f_assignee" value="${c['負責人/廠商']||''}"></div>
@@ -402,80 +558,13 @@ function openFullForm(c){
   };
 }
 
-function makeRow(c){
-  const row = document.createElement('div');
-  row.className = 'list-row';
-  const status = c['處理狀態'] || '待處理';
-  const cls = STATUS_CLASS[status] || 'b-red';
-  const loc = [c['地點(樓層)'], c['地點(細節)']].filter(Boolean).join(' ');
-  row.innerHTML = `
-    <div class="row-top">
-      <div>
-        <p class="row-title">${loc || '(未填地點)'} · ${c['問題類別']||''}</p>
-        <p class="row-desc">${c['問題描述'] || ''}</p>
-        <p class="row-meta">通報 ${c['通報日期']||'—'} ・ ${c['通報人']||'—'} ${c['負責人/廠商']?'・負責人 '+c['負責人/廠商']:''}</p>
-      </div>
-      <span class="badge ${cls}">${status}</span>
-    </div>
-  `;
-  row.onclick = ()=> openFullForm(c);
-  return row;
-}
-
-function renderList(){
-  const wrap = document.getElementById('list');
-  wrap.innerHTML = '';
-
-  let list = cases.slice();
-  if(filter !== '全部') list = list.filter(c=>c['處理狀態']===filter);
-  if(categoryFilter !== '全部') list = list.filter(c=>c['問題類別']===categoryFilter);
-  if(searchText){
-    list = list.filter(c=>{
-      const hay = [c['地點(樓層)'],c['地點(細節)'],c['問題描述'],c['通報人'],c['問題類別']].join(' ').toLowerCase();
-      return hay.includes(searchText);
-    });
-  }
-
-  if(!list.length){
-    wrap.innerHTML = '<p class="empty">目前沒有符合條件的案件。</p>';
-    return;
-  }
-
-  // group by floor
-  const groups = {};
-  list.forEach(c=>{
-    const g = normalizeFloorLabel(c['地點(樓層)']);
-    if(!groups[g]) groups[g] = [];
-    groups[g].push(c);
-  });
-
-  const orderedKeys = Object.keys(groups).sort((a,b)=>{
-    let ia = FLOOR_GROUP_ORDER.indexOf(a); if(ia<0) ia = 999;
-    let ib = FLOOR_GROUP_ORDER.indexOf(b); if(ib<0) ib = 999;
-    if(ia!==ib) return ia-ib;
-    return a.localeCompare(b);
-  });
-
-  orderedKeys.forEach(key=>{
-    const items = groups[key].sort((a,b)=> new Date(b['通報日期']) - new Date(a['通報日期']));
-    const details = document.createElement('details');
-    details.className = 'group';
-    details.open = true;
-    const summary = document.createElement('summary');
-    summary.innerHTML = `<span>${key}</span><span class="count">${items.length} 筆</span>`;
-    details.appendChild(summary);
-    const body = document.createElement('div');
-    body.className = 'group-body';
-    items.forEach(c=> body.appendChild(makeRow(c)));
-    details.appendChild(body);
-    wrap.appendChild(details);
-  });
-}
-
 function render(){
-  renderFilters();
-  renderStats();
-  renderList();
+  renderTabs();
+  document.querySelectorAll('.view').forEach(v=> v.classList.remove('active'));
+  document.getElementById('view-'+currentTab).classList.add('active');
+  if(currentTab==='todo') renderTodoView();
+  if(currentTab==='floor') renderFloorView();
+  if(currentTab==='search') renderSearchView();
 }
 
 document.getElementById('newBtn').onclick = openQuickForm;
