@@ -24,8 +24,11 @@
   .wrap{max-width:760px; margin:0 auto;}
   h1{font-size:20px; font-weight:600; margin:0 0 4px;}
   .sub{color:var(--text-secondary); font-size:13px; margin:0 0 20px;}
-  .toolbar{display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:8px;}
+  .toolbar{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;}
   .filters{display:flex; gap:6px; flex-wrap:wrap;}
+  .filter-row2{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;}
+  .filter-row2 select, .filter-row2 input{font-size:13px; padding:7px 10px;}
+  .search-box{flex:1; min-width:160px;}
   button{
     font-family:inherit; font-size:13px; padding:8px 14px; border-radius:var(--radius);
     border:0.5px solid var(--border-strong); background:var(--surface-2); color:var(--text-primary);
@@ -56,6 +59,15 @@
   .period-toggle button.on{background:var(--surface-1); font-weight:600;}
   .time-row{display:flex; gap:6px;}
   .actions{display:flex; gap:8px; margin-top:14px;}
+  .group{margin-bottom:14px;}
+  .group summary{
+    cursor:pointer; list-style:none; display:flex; align-items:center; justify-content:space-between;
+    padding:10px 14px; background:var(--surface-1); border:0.5px solid var(--border); border-radius:var(--radius);
+    font-weight:600; font-size:14px;
+  }
+  .group summary::-webkit-details-marker{display:none;}
+  .group summary .count{font-weight:400; color:var(--text-secondary); font-size:12px;}
+  .group-body{padding-top:8px;}
   .list-row{background:var(--surface-2); border:0.5px solid var(--border); border-radius:var(--radius); padding:12px 14px; margin-bottom:8px; cursor:pointer;}
   .list-row:hover{border-color:var(--border-strong);}
   .row-top{display:flex; justify-content:space-between; align-items:flex-start; gap:8px;}
@@ -82,6 +94,10 @@
     <div class="filters" id="filters"></div>
     <button class="primary" id="newBtn">+ 快速建檔</button>
   </div>
+  <div class="filter-row2">
+    <select id="categoryFilter"></select>
+    <input class="search-box" id="searchBox" type="text" placeholder="搜尋地點、問題描述、通報人...">
+  </div>
 
   <div class="stats" id="statCards"></div>
 
@@ -90,6 +106,23 @@
   <div id="loadingMsg" class="empty">正在讀取 Google Sheet 資料...</div>
   <div id="list"></div>
 </div>
+
+<datalist id="floorList">
+  <option value="B1"></option>
+  <option value="1F"></option>
+  <option value="2F"></option>
+  <option value="3F"></option>
+  <option value="4F"></option>
+  <option value="5F"></option>
+  <option value="6F"></option>
+  <option value="7F"></option>
+  <option value="8F"></option>
+  <option value="9F"></option>
+  <option value="10F"></option>
+  <option value="11F"></option>
+  <option value="12F"></option>
+  <option value="頂樓"></option>
+</datalist>
 
 <script>
 const SHEET_ID = '1da1UXW0tCFvgWI2Ocz6v3afV3Gf45cCMI8EmZBh2wlU';
@@ -102,13 +135,27 @@ const STATUS = ["待處理","處理中","待外包/待料","已完成"];
 const STATUS_CLASS = {"待處理":"b-red","處理中":"b-amber","待外包/待料":"b-purple","已完成":"b-green"};
 const PRIORITY = ["緊急","一般","低"];
 const CHANNELS = ["電話","口頭","填單","Email"];
+const FLOOR_OPTIONS = ["B1","1F","2F","3F","4F","5F","6F","7F","8F","9F","10F","11F","12F","頂樓"];
+const FLOOR_GROUP_ORDER = ["B1","1F","2F","3F","4F","5F","6F","7F","8F","9F","10F","11F","12F","頂樓","未填樓層"];
 
 let cases = [];
 let filter = "全部";
+let categoryFilter = "全部";
+let searchText = "";
 
 function pad(n){ return String(n).padStart(2,'0'); }
 function todayStr(){ const d = new Date(); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
 function nowHour(){ return new Date().getHours(); }
+
+function normalizeFloorLabel(floor){
+  if(!floor || !String(floor).trim()) return '未填樓層';
+  const f = String(floor).trim().toUpperCase();
+  if(f === '頂樓' || f.includes('頂')) return '頂樓';
+  if(/^B\d+$/.test(f)) return f;
+  if(/^\d+F$/.test(f)) return f;
+  if(/^\d+$/.test(f)) return f + 'F';
+  return f;
+}
 
 function parseGvizValue(cell){
   if(!cell || cell.v === null || cell.v === undefined) return '';
@@ -153,7 +200,9 @@ function getPickedHour(idPrefix){
 }
 
 async function loadFromSheet(){
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_NAME)}`;
+  // headers=1 explicitly tells gviz the first row is a header row,
+  // so it is never mistakenly returned as a data row.
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_NAME)}&headers=1`;
   const res = await fetch(url);
   const text = await res.text();
   const jsonStr = text.substring(text.indexOf('{'), text.lastIndexOf('}')+1);
@@ -164,7 +213,12 @@ async function loadFromSheet(){
     const obj = {};
     HEADERS.forEach((h, i)=>{ obj[h] = c[i] ? parseGvizValue(c[i]) : ''; });
     return obj;
-  }).filter(o=>o['案件編號']);
+  }).filter(o=>{
+    if(!o['案件編號']) return false;
+    // defensive: drop any row that is actually the header row itself
+    if(o['案件編號'] === '案件編號') return false;
+    return true;
+  });
 }
 
 async function postToSheet(payload){
@@ -186,6 +240,19 @@ function renderFilters(){
     b.onclick = ()=>{ filter = s; render(); };
     wrap.appendChild(b);
   });
+
+  const catSel = document.getElementById('categoryFilter');
+  if(!catSel.dataset.wired){
+    catSel.innerHTML = ['全部類別', ...CATS].map(c=>`<option value="${c==='全部類別'?'全部':c}">${c}</option>`).join('');
+    catSel.onchange = ()=>{ categoryFilter = catSel.value; render(); };
+    catSel.dataset.wired = '1';
+  }
+
+  const searchBox = document.getElementById('searchBox');
+  if(!searchBox.dataset.wired){
+    searchBox.oninput = ()=>{ searchText = searchBox.value.trim().toLowerCase(); render(); };
+    searchBox.dataset.wired = '1';
+  }
 }
 
 function renderStats(){
@@ -213,13 +280,6 @@ function renderStats(){
   });
 }
 
-function showSync(msg){
-  const bar = document.getElementById('syncBar');
-  bar.style.display = 'block';
-  bar.textContent = msg;
-}
-function hideSync(){ document.getElementById('syncBar').style.display = 'none'; }
-
 function openQuickForm(){
   const wrap = document.getElementById('formWrap');
   wrap.style.display = 'block';
@@ -234,7 +294,8 @@ function openQuickForm(){
         <div class="field"><label>通報時間</label>${timePickerHtml('q', nowHour())}</div>
         <div class="field"><label>通報方式</label><select id="q_channel">${CHANNELS.map(x=>`<option>${x}</option>`).join('')}</select></div>
         <div class="field"><label>問題類別</label><select id="q_category">${CATS.map(x=>`<option>${x}</option>`).join('')}</select></div>
-        <div class="field full"><label>地點</label><input id="q_location" placeholder="例如 6F 男廁"></div>
+        <div class="field"><label>樓層</label><select id="q_floor">${FLOOR_OPTIONS.map(x=>`<option>${x}</option>`).join('')}</select></div>
+        <div class="field"><label>地點細節</label><input id="q_location" placeholder="例如 男廁"></div>
         <div class="field full"><label>簡述</label><input id="q_desc" placeholder="例如 馬桶後方漏水"></div>
       </div>
       <div class="actions">
@@ -256,7 +317,7 @@ function openQuickForm(){
       '通報人': document.getElementById('q_reporter').value,
       '分機': document.getElementById('q_ext').value,
       '問題類別': document.getElementById('q_category').value,
-      '地點(樓層)': '',
+      '地點(樓層)': document.getElementById('q_floor').value,
       '地點(細節)': document.getElementById('q_location').value,
       '問題描述': document.getElementById('q_desc').value,
       '緊急程度': '一般',
@@ -289,7 +350,7 @@ function openFullForm(c){
         <div class="field"><label>通報時間</label>${timePickerHtml('f', reportedHour)}</div>
         <div class="field"><label>通報方式</label><select id="f_channel">${CHANNELS.map(x=>`<option ${x===c['通報方式']?'selected':''}>${x}</option>`).join('')}</select></div>
         <div class="field"><label>問題類別</label><select id="f_category">${CATS.map(x=>`<option ${x===c['問題類別']?'selected':''}>${x}</option>`).join('')}</select></div>
-        <div class="field"><label>地點(樓層)</label><input id="f_floor" value="${c['地點(樓層)']||''}"></div>
+        <div class="field"><label>樓層</label><input id="f_floor" value="${c['地點(樓層)']||''}" list="floorList" placeholder="例如 6F"></div>
         <div class="field"><label>地點(細節)</label><input id="f_location" value="${c['地點(細節)']||''}"></div>
         <div class="field"><label>緊急程度</label><select id="f_priority">${PRIORITY.map(x=>`<option ${x===c['緊急程度']?'selected':''}>${x}</option>`).join('')}</select></div>
         <div class="field"><label>負責人/廠商</label><input id="f_assignee" value="${c['負責人/廠商']||''}"></div>
@@ -341,33 +402,73 @@ function openFullForm(c){
   };
 }
 
+function makeRow(c){
+  const row = document.createElement('div');
+  row.className = 'list-row';
+  const status = c['處理狀態'] || '待處理';
+  const cls = STATUS_CLASS[status] || 'b-red';
+  const loc = [c['地點(樓層)'], c['地點(細節)']].filter(Boolean).join(' ');
+  row.innerHTML = `
+    <div class="row-top">
+      <div>
+        <p class="row-title">${loc || '(未填地點)'} · ${c['問題類別']||''}</p>
+        <p class="row-desc">${c['問題描述'] || ''}</p>
+        <p class="row-meta">通報 ${c['通報日期']||'—'} ・ ${c['通報人']||'—'} ${c['負責人/廠商']?'・負責人 '+c['負責人/廠商']:''}</p>
+      </div>
+      <span class="badge ${cls}">${status}</span>
+    </div>
+  `;
+  row.onclick = ()=> openFullForm(c);
+  return row;
+}
+
 function renderList(){
   const wrap = document.getElementById('list');
   wrap.innerHTML = '';
-  let list = cases.slice().sort((a,b)=> new Date(b['通報日期']) - new Date(a['通報日期']));
+
+  let list = cases.slice();
   if(filter !== '全部') list = list.filter(c=>c['處理狀態']===filter);
+  if(categoryFilter !== '全部') list = list.filter(c=>c['問題類別']===categoryFilter);
+  if(searchText){
+    list = list.filter(c=>{
+      const hay = [c['地點(樓層)'],c['地點(細節)'],c['問題描述'],c['通報人'],c['問題類別']].join(' ').toLowerCase();
+      return hay.includes(searchText);
+    });
+  }
+
   if(!list.length){
     wrap.innerHTML = '<p class="empty">目前沒有符合條件的案件。</p>';
     return;
   }
+
+  // group by floor
+  const groups = {};
   list.forEach(c=>{
-    const row = document.createElement('div');
-    row.className = 'list-row';
-    const status = c['處理狀態'] || '待處理';
-    const cls = STATUS_CLASS[status] || 'b-red';
-    const loc = [c['地點(樓層)'], c['地點(細節)']].filter(Boolean).join(' ');
-    row.innerHTML = `
-      <div class="row-top">
-        <div>
-          <p class="row-title">${loc || '(未填地點)'} · ${c['問題類別']||''}</p>
-          <p class="row-desc">${c['問題描述'] || ''}</p>
-          <p class="row-meta">通報 ${c['通報日期']||'—'} ・ ${c['通報人']||'—'} ${c['負責人/廠商']?'・負責人 '+c['負責人/廠商']:''}</p>
-        </div>
-        <span class="badge ${cls}">${status}</span>
-      </div>
-    `;
-    row.onclick = ()=> openFullForm(c);
-    wrap.appendChild(row);
+    const g = normalizeFloorLabel(c['地點(樓層)']);
+    if(!groups[g]) groups[g] = [];
+    groups[g].push(c);
+  });
+
+  const orderedKeys = Object.keys(groups).sort((a,b)=>{
+    let ia = FLOOR_GROUP_ORDER.indexOf(a); if(ia<0) ia = 999;
+    let ib = FLOOR_GROUP_ORDER.indexOf(b); if(ib<0) ib = 999;
+    if(ia!==ib) return ia-ib;
+    return a.localeCompare(b);
+  });
+
+  orderedKeys.forEach(key=>{
+    const items = groups[key].sort((a,b)=> new Date(b['通報日期']) - new Date(a['通報日期']));
+    const details = document.createElement('details');
+    details.className = 'group';
+    details.open = true;
+    const summary = document.createElement('summary');
+    summary.innerHTML = `<span>${key}</span><span class="count">${items.length} 筆</span>`;
+    details.appendChild(summary);
+    const body = document.createElement('div');
+    body.className = 'group-body';
+    items.forEach(c=> body.appendChild(makeRow(c)));
+    details.appendChild(body);
+    wrap.appendChild(details);
   });
 }
 
