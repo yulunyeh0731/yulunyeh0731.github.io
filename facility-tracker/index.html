@@ -97,6 +97,19 @@
   .syncbar{font-size:13px; color:var(--text-secondary); margin-bottom:10px;}
   .view{display:none;}
   .view.active{display:block;}
+
+  .section-label{
+    display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
+    color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.02em;
+    margin:0 0 8px; padding-top:4px;
+  }
+  .section-label.pending{color:var(--accent);}
+  .section-recorded{background:var(--surface-1); border-radius:var(--radius); padding:12px; margin-bottom:16px;}
+  .section-recorded input, .section-recorded select{background:var(--surface-0);}
+  .field-empty input, .field-empty select, .field-empty textarea{
+    border-color:var(--accent); background:var(--bg-accent);
+  }
+  .field-empty label{color:var(--accent); font-weight:600;}
 </style>
 </head>
 <body>
@@ -496,10 +509,16 @@ function openFullForm(c){
   const wrap = document.getElementById('formWrap');
   wrap.style.display = 'block';
   const reportedHour = c['通報時間(小時)'] ? parseInt(c['通報時間(小時)']) : nowHour();
+
+  // 處理進度欄位若為空,加上 field-empty 樣式提醒還沒填
+  const emptyCls = (val)=> val ? '' : ' field-empty';
+
   wrap.innerHTML = `
     <div class="card">
       <h3>編輯案件 ${c['案件編號']}</h3>
-      <div class="grid2">
+
+      <p class="section-label">📋 通報資訊(建檔時已填寫)</p>
+      <div class="grid2 section-recorded">
         <div class="field"><label>通報人</label><input id="f_reporter" value="${c['通報人']||''}"></div>
         <div class="field"><label>分機</label><input id="f_ext" value="${c['分機']||''}"></div>
         <div class="field"><label>通報日期</label><input type="date" id="f_date" value="${c['通報日期']||todayStr()}"></div>
@@ -508,13 +527,18 @@ function openFullForm(c){
         <div class="field"><label>問題類別</label><select id="f_category">${CATS.map(x=>`<option ${x===c['問題類別']?'selected':''}>${x}</option>`).join('')}</select></div>
         <div class="field"><label>樓層</label><input id="f_floor" value="${c['地點(樓層)']||''}" list="floorDatalist" placeholder="例如 6F"></div>
         <div class="field"><label>地點(細節)</label><input id="f_location" value="${c['地點(細節)']||''}"></div>
-        <div class="field"><label>緊急程度</label><select id="f_priority">${PRIORITY.map(x=>`<option ${x===c['緊急程度']?'selected':''}>${x}</option>`).join('')}</select></div>
-        <div class="field"><label>負責人/廠商</label><input id="f_assignee" value="${c['負責人/廠商']||''}"></div>
-        <div class="field"><label>處理狀態</label><select id="f_status">${STATUS.map(x=>`<option ${x===c['處理狀態']?'selected':''}>${x}</option>`).join('')}</select></div>
-        <div class="field"><label>完成日期</label><input type="date" id="f_completed" value="${c['完成時間']||''}"></div>
+        <div class="field full"><label>問題描述</label><textarea id="f_desc" rows="2">${c['問題描述']||''}</textarea></div>
       </div>
-      <div class="field full" style="margin-top:10px;"><label>問題描述</label><textarea id="f_desc" rows="2">${c['問題描述']||''}</textarea></div>
-      <div class="field full" style="margin-top:10px;"><label>處理記錄/備註</label><textarea id="f_notes" rows="2">${c['處理記錄/備註']||''}</textarea></div>
+
+      <p class="section-label pending">🔧 處理進度(請補充)</p>
+      <div class="grid2">
+        <div class="field${emptyCls(c['負責人/廠商'])}"><label>負責人/廠商</label><input id="f_assignee" value="${c['負責人/廠商']||''}" placeholder="尚未填寫"></div>
+        <div class="field"><label>處理狀態</label><select id="f_status">${STATUS.map(x=>`<option ${x===c['處理狀態']?'selected':''}>${x}</option>`).join('')}</select></div>
+        <div class="field"><label>緊急程度</label><select id="f_priority">${PRIORITY.map(x=>`<option ${x===c['緊急程度']?'selected':''}>${x}</option>`).join('')}</select></div>
+        <div class="field${emptyCls(c['完成時間'])}"><label>完成日期</label><input type="date" id="f_completed" value="${c['完成時間']||''}"></div>
+        <div class="field full${emptyCls(c['處理記錄/備註'])}"><label>處理記錄/備註</label><textarea id="f_notes" rows="2" placeholder="尚未填寫">${c['處理記錄/備註']||''}</textarea></div>
+      </div>
+
       <div class="actions">
         <button class="primary" id="saveBtn">儲存</button>
         <button id="cancelBtn">取消</button>
