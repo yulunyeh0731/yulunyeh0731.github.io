@@ -107,9 +107,21 @@
   .section-recorded{background:var(--surface-1); border-radius:var(--radius); padding:12px; margin-bottom:16px;}
   .section-recorded input, .section-recorded select{background:var(--surface-0);}
   .field-empty input, .field-empty select, .field-empty textarea{
-    border-color:var(--accent); background:var(--bg-accent);
+    border-color:var(--amber); background:var(--bg-amber);
   }
-  .field-empty label{color:var(--accent); font-weight:600;}
+  .field-empty label{color:var(--amber); font-weight:600;}
+  .b-gray{background:#ececea; color:#5f5e5a;}
+  .photo-thumbs{display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;}
+  .photo-thumbs img{
+    width:72px; height:72px; object-fit:cover; border-radius:6px;
+    border:0.5px solid var(--border-strong); cursor:pointer; background:var(--surface-1);
+  }
+  @media (max-width:480px){
+    body{padding:16px 10px 80px;}
+    .grid2{grid-template-columns:1fr;}
+    .tabs{overflow-x:auto; -webkit-overflow-scrolling:touch; flex-wrap:nowrap; max-width:100%;}
+    .tab-btn{padding:10px 10px; white-space:nowrap; font-size:13px;}
+  }
 </style>
 </head>
 <body>
@@ -121,7 +133,10 @@
 
   <div class="toolbar">
     <div class="tabs" id="tabs"></div>
-    <button class="primary" id="newBtn">+ 快速建檔</button>
+    <div style="display:flex; gap:8px;">
+      <button id="reloadBtn" title="重新載入最新資料">↻</button>
+      <button class="primary" id="newBtn">+ 快速建檔</button>
+    </div>
   </div>
 
   <div id="formWrap" style="display:none;"></div>
@@ -149,6 +164,12 @@
     </div>
     <div id="searchList"></div>
   </div>
+
+  <!-- 依負責人檢視 -->
+  <div class="view" id="view-assignee">
+    <div class="stats" id="assigneeStats"></div>
+    <div id="assigneeList"></div>
+  </div>
 </div>
 
 <datalist id="floorDatalist">
@@ -172,11 +193,11 @@
 const SHEET_ID = '1da1UXW0tCFvgWI2Ocz6v3afV3Gf45cCMI8EmZBh2wlU';
 const SHEET_NAME = '案件紀錄';
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxqSM31tNo0lop1TzhYKvH7qzQISnGpujL9yiBCN7vDdmJJ1gOo8lPnPv6H0z7WkNR5/exec';
-const HEADERS = ['案件編號','通報日期','通報時間(小時)','通報方式','通報人','分機','問題類別','地點(樓層)','地點(細節)','問題描述','緊急程度','負責人/廠商','處理狀態','回覆同仁時間','完成時間','處理記錄/備註','原始申請單號'];
+const HEADERS = ['案件編號','通報日期','通報時間(小時)','通報方式','通報人','分機','問題類別','地點(樓層)','地點(細節)','問題描述','緊急程度','負責人/廠商','處理狀態','回覆同仁時間','完成時間','處理記錄/備註','原始申請單號','照片連結'];
 
 const CATS = ["電力照明","給排水・漏水","空調","機械停車車梯","辦公設備(事務機/電話)","門禁/監控設備","清潔","一般修繕","其他"];
-const STATUS = ["待處理","處理中","待外包/待料","已完成"];
-const STATUS_CLASS = {"待處理":"b-red","處理中":"b-amber","待外包/待料":"b-purple","已完成":"b-green"};
+const STATUS = ["待處理","處理中","待外包/待料","已完成","結案"];
+const STATUS_CLASS = {"待處理":"b-red","處理中":"b-amber","待外包/待料":"b-purple","已完成":"b-green","結案":"b-gray"};
 const PRIORITY = ["緊急","一般","低"];
 const CHANNELS = ["電話","口頭","填單","Email"];
 const FLOOR_OPTIONS = ["B1","1F","2F","3F","4F","5F","6F","7F","8F","9F","10F","11F","12F","頂樓"];
@@ -194,9 +215,84 @@ function todayStr(){ const d = new Date(); return d.getFullYear()+'-'+pad(d.getM
 function nowHour(){ return new Date().getHours(); }
 function daysSince(dateStr){
   if(!dateStr) return 0;
-  const d = new Date(dateStr);
+  const m = String(dateStr).match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(!m) return 0;
+  const d = new Date(+m[1], +m[2]-1, +m[3]);
   const now = new Date();
-  return Math.floor((now - d) / 86400000);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.floor((today - d) / 86400000);
+}
+
+// 把使用者輸入放進 HTML 前先跳脫,避免引號/角括號弄壞畫面或資料
+function esc(v){
+  return String(v==null?'':v)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ---------- 照片:壓縮與暫存 ----------
+const pendingPhotos = { q: [], f: [] };
+
+function compressImage(file){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const maxW = 1200;
+      const scale = Math.min(1, maxW / img.width);
+      const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      URL.revokeObjectURL(img.src);
+      resolve(dataUrl.split(',')[1]); // 只留 base64 內容
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(img.src); reject(new Error('image load fail')); };
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+function wirePhotoInput(prefix){
+  pendingPhotos[prefix] = [];
+  const input = document.getElementById(prefix + '_photo');
+  const thumbs = document.getElementById(prefix + '_thumbs');
+  if(!input) return;
+  input.onchange = async ()=>{
+    const files = Array.from(input.files || []);
+    if(!files.length) return;
+    if(pendingPhotos[prefix].length + files.length > 4){
+      alert('一次最多上傳 4 張照片'); input.value = ''; return;
+    }
+    input.disabled = true;
+    for(const f of files){
+      try{
+        const b64 = await compressImage(f);
+        pendingPhotos[prefix].push(b64);
+        const im = document.createElement('img');
+        im.src = 'data:image/jpeg;base64,' + b64;
+        thumbs.appendChild(im);
+      }catch(e){ alert('有一張照片讀取失敗,已略過'); }
+    }
+    input.disabled = false;
+    input.value = '';
+  };
+}
+
+function driveThumb(link){
+  const m = String(link).match(/[-\w]{25,}/);
+  return m ? ('https://drive.google.com/thumbnail?id=' + m[0] + '&sz=w200') : link;
+}
+
+function renderExistingPhotos(wrapId, links){
+  const wrap = document.getElementById(wrapId);
+  if(!wrap) return;
+  String(links || '').split(/\s+/).filter(Boolean).forEach(link=>{
+    const im = document.createElement('img');
+    im.src = driveThumb(link);
+    im.title = '點擊看原圖';
+    im.onclick = (ev)=>{ ev.stopPropagation(); window.open(link, '_blank'); };
+    wrap.appendChild(im);
+  });
 }
 
 function normalizeFloorLabel(floor){
@@ -284,7 +380,8 @@ function renderTabs(){
   const tabs = [
     {id:'todo', label:'待辦總覽'},
     {id:'floor', label:'依樓層檢視'},
-    {id:'search', label:'全部案件'}
+    {id:'search', label:'全部案件'},
+    {id:'assignee', label:'依負責人'}
   ];
   wrap.innerHTML = '';
   tabs.forEach(t=>{
@@ -307,14 +404,15 @@ function makeRow(c, opts){
   const overdue = isActive && age >= OVERDUE_DAYS;
   row.className = 'list-row' + (overdue ? ' overdue' : '');
   const ageText = isActive ? `・已等待 <span class="${overdue?'overdue-tag':''}">${age} 天${overdue?' ⚠':''}</span>` : '';
+  const photoIcon = c['照片連結'] ? ' 📷' : '';
   row.innerHTML = `
     <div class="row-top">
       <div>
-        <p class="row-title">${loc || '(未填地點)'} · ${c['問題類別']||''}</p>
-        <p class="row-desc">${c['問題描述'] || ''}</p>
-        <p class="row-meta">通報 ${c['通報日期']||'—'} ・ ${c['通報人']||'—'} ${c['負責人/廠商']?'・負責人 '+c['負責人/廠商']:''} ${ageText}</p>
+        <p class="row-title">${esc(loc) || '(未填地點)'} · ${esc(c['問題類別']||'')}${photoIcon}</p>
+        <p class="row-desc">${esc(c['問題描述'] || '')}</p>
+        <p class="row-meta">通報 ${esc(c['通報日期']||'—')} ・ ${esc(c['通報人']||'—')} ${c['負責人/廠商']?'・負責人 '+esc(c['負責人/廠商']):''} ${ageText}</p>
       </div>
-      <span class="badge ${cls}">${status}</span>
+      <span class="badge ${cls}">${esc(status)}</span>
     </div>
   `;
   row.onclick = ()=> openFullForm(c);
@@ -395,7 +493,7 @@ function renderFloorView(){
     const details = document.createElement('details');
     details.className = 'group';
     const summary = document.createElement('summary');
-    summary.innerHTML = `<span>${key}</span><span class="count">${items.length} 筆</span>`;
+    summary.innerHTML = `<span>${esc(key)}</span><span class="count">${items.length} 筆</span>`;
     details.appendChild(summary);
     const body = document.createElement('div');
     body.className = 'group-body';
@@ -449,6 +547,61 @@ function renderSearchView(){
   list.forEach(c=> wrap.appendChild(makeRow(c)));
 }
 
+// ---------- 依負責人檢視 ----------
+function renderAssigneeView(){
+  const isActiveCase = c=>{
+    const st = c['處理狀態'] || '待處理';
+    return st==='待處理' || st==='處理中' || st==='待外包/待料';
+  };
+  const groups = {};
+  cases.forEach(c=>{
+    const key = String(c['負責人/廠商']||'').trim() || '未指派';
+    if(!groups[key]) groups[key] = [];
+    groups[key].push(c);
+  });
+  const unassignedActive = (groups['未指派']||[]).filter(isActiveCase).length;
+
+  const statsWrap = document.getElementById('assigneeStats');
+  statsWrap.innerHTML = '';
+  [
+    {label:'負責人/廠商數', value: Object.keys(groups).filter(k=>k!=='未指派').length},
+    {label:'未指派(未結)', value: unassignedActive, warn: unassignedActive > 0},
+    {label:'總案件數', value: cases.length}
+  ].forEach(it=>{
+    const d = document.createElement('div');
+    d.className = 'stat' + (it.warn ? ' warn' : '');
+    d.innerHTML = `<p class="label">${it.label}</p><p class="value">${it.value}</p>`;
+    statsWrap.appendChild(d);
+  });
+
+  const wrap = document.getElementById('assigneeList');
+  wrap.innerHTML = '';
+  const keys = Object.keys(groups).sort((a,b)=>{
+    if(a==='未指派') return -1;
+    if(b==='未指派') return 1;
+    const aa = groups[a].filter(isActiveCase).length;
+    const bb = groups[b].filter(isActiveCase).length;
+    if(bb !== aa) return bb - aa;
+    return groups[b].length - groups[a].length;
+  });
+  keys.forEach(key=>{
+    const items = groups[key].slice().sort((a,b)=> new Date(b['通報日期']) - new Date(a['通報日期']));
+    const activeN = items.filter(isActiveCase).length;
+    const doneN = items.length - activeN;
+    const details = document.createElement('details');
+    details.className = 'group';
+    if(key==='未指派' && activeN > 0) details.open = true;
+    const summary = document.createElement('summary');
+    summary.innerHTML = `<span>${esc(key)}</span><span class="count">${activeN} 筆未結・${doneN} 筆已完成</span>`;
+    details.appendChild(summary);
+    const body = document.createElement('div');
+    body.className = 'group-body';
+    items.forEach(c=> body.appendChild(makeRow(c)));
+    details.appendChild(body);
+    wrap.appendChild(details);
+  });
+}
+
 function openQuickForm(){
   const wrap = document.getElementById('formWrap');
   wrap.style.display = 'block';
@@ -466,6 +619,11 @@ function openQuickForm(){
         <div class="field"><label>樓層</label><select id="q_floor">${FLOOR_OPTIONS.map(x=>`<option>${x}</option>`).join('')}</select></div>
         <div class="field"><label>地點細節</label><input id="q_location" placeholder="例如 男廁"></div>
         <div class="field full"><label>簡述</label><input id="q_desc" placeholder="例如 馬桶後方漏水"></div>
+        <div class="field full">
+          <label>現場照片(可拍照或選擇,最多 4 張)</label>
+          <input type="file" id="q_photo" accept="image/*" multiple>
+          <div class="photo-thumbs" id="q_thumbs"></div>
+        </div>
       </div>
       <div class="actions">
         <button class="primary" id="quickSaveBtn">建立案件</button>
@@ -474,6 +632,7 @@ function openQuickForm(){
     </div>
   `;
   wirePeriodButtons('q');
+  wirePhotoInput('q');
   document.getElementById('quickCancelBtn').onclick = ()=>{ wrap.style.display='none'; wrap.innerHTML=''; };
   document.getElementById('quickSaveBtn').onclick = async ()=>{
     const btn = document.getElementById('quickSaveBtn');
@@ -490,11 +649,16 @@ function openQuickForm(){
       '地點(細節)': document.getElementById('q_location').value,
       '問題描述': document.getElementById('q_desc').value,
       '緊急程度': '一般',
-      '處理狀態': '待處理'
+      '處理狀態': '待處理',
+      '照片連結': ''
     };
+    if(pendingPhotos.q.length) payload.photos = pendingPhotos.q;
     try{
       const result = await postToSheet(payload);
+      if(result.status !== 'ok') throw new Error(result.message || 'server error');
+      delete payload.photos;
       payload['案件編號'] = result.caseId;
+      if(result.photoLinks) payload['照片連結'] = result.photoLinks;
       cases.unshift(payload);
       wrap.style.display='none'; wrap.innerHTML='';
       render();
@@ -519,24 +683,31 @@ function openFullForm(c){
 
       <p class="section-label">📋 通報資訊(建檔時已填寫)</p>
       <div class="grid2 section-recorded">
-        <div class="field"><label>通報人</label><input id="f_reporter" value="${c['通報人']||''}"></div>
-        <div class="field"><label>分機</label><input id="f_ext" value="${c['分機']||''}"></div>
-        <div class="field"><label>通報日期</label><input type="date" id="f_date" value="${c['通報日期']||todayStr()}"></div>
+        <div class="field"><label>通報人</label><input id="f_reporter" value="${esc(c['通報人']||'')}"></div>
+        <div class="field"><label>分機</label><input id="f_ext" value="${esc(c['分機']||'')}"></div>
+        <div class="field"><label>通報日期</label><input type="date" id="f_date" value="${esc(c['通報日期']||todayStr())}"></div>
         <div class="field"><label>通報時間</label>${timePickerHtml('f', reportedHour)}</div>
         <div class="field"><label>通報方式</label><select id="f_channel">${CHANNELS.map(x=>`<option ${x===c['通報方式']?'selected':''}>${x}</option>`).join('')}</select></div>
         <div class="field"><label>問題類別</label><select id="f_category">${CATS.map(x=>`<option ${x===c['問題類別']?'selected':''}>${x}</option>`).join('')}</select></div>
-        <div class="field"><label>樓層</label><input id="f_floor" value="${c['地點(樓層)']||''}" list="floorDatalist" placeholder="例如 6F"></div>
-        <div class="field"><label>地點(細節)</label><input id="f_location" value="${c['地點(細節)']||''}"></div>
-        <div class="field full"><label>問題描述</label><textarea id="f_desc" rows="2">${c['問題描述']||''}</textarea></div>
+        <div class="field"><label>樓層</label><input id="f_floor" value="${esc(c['地點(樓層)']||'')}" list="floorDatalist" placeholder="例如 6F"></div>
+        <div class="field"><label>地點(細節)</label><input id="f_location" value="${esc(c['地點(細節)']||'')}"></div>
+        <div class="field full"><label>問題描述</label><textarea id="f_desc" rows="2">${esc(c['問題描述']||'')}</textarea></div>
       </div>
 
       <p class="section-label pending">🔧 處理進度(請補充)</p>
       <div class="grid2">
-        <div class="field${emptyCls(c['負責人/廠商'])}"><label>負責人/廠商</label><input id="f_assignee" value="${c['負責人/廠商']||''}" placeholder="尚未填寫"></div>
+        <div class="field${emptyCls(c['負責人/廠商'])}"><label>負責人/廠商</label><input id="f_assignee" value="${esc(c['負責人/廠商']||'')}" placeholder="尚未填寫"></div>
         <div class="field"><label>處理狀態</label><select id="f_status">${STATUS.map(x=>`<option ${x===c['處理狀態']?'selected':''}>${x}</option>`).join('')}</select></div>
         <div class="field"><label>緊急程度</label><select id="f_priority">${PRIORITY.map(x=>`<option ${x===c['緊急程度']?'selected':''}>${x}</option>`).join('')}</select></div>
-        <div class="field${emptyCls(c['完成時間'])}"><label>完成日期</label><input type="date" id="f_completed" value="${c['完成時間']||''}"></div>
-        <div class="field full${emptyCls(c['處理記錄/備註'])}"><label>處理記錄/備註</label><textarea id="f_notes" rows="2" placeholder="尚未填寫">${c['處理記錄/備註']||''}</textarea></div>
+        <div class="field${emptyCls(c['回覆同仁時間'])}"><label>回覆同仁日期</label><input type="date" id="f_replied" value="${esc(c['回覆同仁時間']||'')}"></div>
+        <div class="field${emptyCls(c['完成時間'])}"><label>完成日期</label><input type="date" id="f_completed" value="${esc(c['完成時間']||'')}"></div>
+        <div class="field full${emptyCls(c['處理記錄/備註'])}"><label>處理記錄/備註</label><textarea id="f_notes" rows="2" placeholder="尚未填寫">${esc(c['處理記錄/備註']||'')}</textarea></div>
+        <div class="field full">
+          <label>現場照片</label>
+          <div class="photo-thumbs" id="f_existing"></div>
+          <input type="file" id="f_photo" accept="image/*" multiple>
+          <div class="photo-thumbs" id="f_thumbs"></div>
+        </div>
       </div>
 
       <div class="actions">
@@ -546,6 +717,8 @@ function openFullForm(c){
     </div>
   `;
   wirePeriodButtons('f');
+  wirePhotoInput('f');
+  renderExistingPhotos('f_existing', c['照片連結']);
   document.getElementById('cancelBtn').onclick = ()=>{ wrap.style.display='none'; wrap.innerHTML=''; };
   document.getElementById('saveBtn').onclick = async ()=>{
     const btn = document.getElementById('saveBtn');
@@ -566,11 +739,17 @@ function openFullForm(c){
       '負責人/廠商': document.getElementById('f_assignee').value,
       '處理狀態': document.getElementById('f_status').value,
       '完成時間': document.getElementById('f_completed').value,
+      '回覆同仁時間': document.getElementById('f_replied').value,
       '處理記錄/備註': document.getElementById('f_notes').value,
-      '原始申請單號': c['原始申請單號']||''
+      '原始申請單號': c['原始申請單號']||'',
+      '照片連結': c['照片連結']||''
     };
+    if(pendingPhotos.f.length) payload.photos = pendingPhotos.f;
     try{
-      await postToSheet(payload);
+      const result = await postToSheet(payload);
+      if(result.status !== 'ok') throw new Error(result.message || 'server error');
+      delete payload.photos;
+      if(result.photoLinks !== undefined) payload['照片連結'] = result.photoLinks;
       const idx = cases.findIndex(x=>x['案件編號']===c['案件編號']);
       if(idx>=0) cases[idx] = payload;
       wrap.style.display='none'; wrap.innerHTML='';
@@ -589,9 +768,17 @@ function render(){
   if(currentTab==='todo') renderTodoView();
   if(currentTab==='floor') renderFloorView();
   if(currentTab==='search') renderSearchView();
+  if(currentTab==='assignee') renderAssigneeView();
 }
 
 document.getElementById('newBtn').onclick = openQuickForm;
+document.getElementById('reloadBtn').onclick = async ()=>{
+  const b = document.getElementById('reloadBtn');
+  b.disabled = true; b.textContent = '…';
+  try{ await loadFromSheet(); render(); }
+  catch(e){ alert('重新載入失敗,請稍後再試'); }
+  b.disabled = false; b.textContent = '↻';
+};
 
 (async function init(){
   try{
