@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TEX-RAY 展覽管理系統</title>
+<style>
+  :root {
+    /* 語意色系：藍=確定進行中、橘黃=待決定、綠=已完成、灰=不適用/已過 */
+    --blue: #1D4ED8;     --blue-bg: #EFF4FF;     --blue-soft: #DBE6FE;
+    --amber: #B45309;    --amber-bg: #FFF7E8;    --amber-soft: #FCE7C3;
+    --green: #15803D;    --green-bg: #F0FBF4;    --green-soft: #CDEFDA;
+    --gray: #6B7280;     --gray-bg: #F5F5F5;     --gray-soft: #E5E5E5;
+
+    --border: #EAEAEA;
+    --bg: #FAFAFA;
+    --card: #FFFFFF;
+    --text: #18181B;
+    --text-secondary: #71717A;
+    --text-tertiary: #A1A1AA;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
+    background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 1rem; }
+  header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 1rem; flex-wrap: wrap; gap: 6px; }
+  header h1 { font-size: 17px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  header span { font-size: 12px; color: var(--text-tertiary); }
+
+  .year-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .year-tab {
+    font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--card); color: var(--text-tertiary); cursor: pointer;
+  }
+  .year-tab.active { background: var(--text); color: #fff; border-color: var(--text); }
+  .year-tab[disabled] { opacity: 0.45; cursor: default; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 1.1rem 1.25rem; margin-bottom: 1rem; }
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  @media (max-width: 600px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+  .stat-box { border-radius: 12px; padding: 0.85rem 0.9rem; border: 1px solid transparent; }
+  .stat-box p:first-child { font-size: 12px; margin: 0 0 6px; opacity: 0.85; }
+  .stat-box p:last-child { font-size: 24px; font-weight: 700; margin: 0; letter-spacing: -0.02em; }
+  .stat-total   { background: var(--gray-bg); color: var(--text); }
+  .stat-total p:first-child { color: var(--text-secondary); }
+  .stat-confirmed { background: var(--blue-bg); color: var(--blue); }
+  .stat-evaluating { background: var(--amber-bg); color: var(--amber); }
+  .stat-done { background: var(--green-bg); color: var(--green); }
+
+  .group-label { font-size: 12px; font-weight: 600; color: var(--text-tertiary); margin: 18px 0 8px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .group-label:first-child { margin-top: 0; }
+  .ex-row {
+    display: flex; align-items: center; gap: 12px; padding: 11px 8px;
+    border-bottom: 1px solid var(--border); cursor: pointer; border-left: 3px solid transparent;
+  }
+  .ex-row:last-child { border-bottom: none; }
+  .ex-row:hover { background: var(--bg); }
+  .ex-row.c-blue { border-left-color: var(--blue); }
+  .ex-row.c-amber { border-left-color: var(--amber); }
+  .ex-row.c-green { border-left-color: var(--green); }
+  .ex-row.c-gray { border-left-color: var(--gray-soft); }
+  .ex-name { font-size: 13.5px; font-weight: 600; flex: 1.6; min-width: 0; }
+  .ex-date { font-size: 12.5px; color: var(--text-secondary); flex: 1; }
+  .ex-place { font-size: 12.5px; color: var(--text-secondary); flex: 0.9; }
+  .ex-row .tag { flex: 0 0 auto; }
+  @media (max-width: 600px) {
+    .ex-row { flex-wrap: wrap; }
+    .ex-name { flex: 1 1 100%; }
+    .ex-date, .ex-place { font-size: 12px; }
+  }
+
+  .collapse-toggle { font-size: 12.5px; color: var(--text-tertiary); cursor: pointer; padding: 8px 8px 2px; user-select: none; }
+  .collapse-toggle:hover { color: var(--text-secondary); }
+  .collapsed { display: none; }
+
+  .tag { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 99px; display: inline-block; white-space: nowrap; }
+  .tag-blue { background: var(--blue-soft); color: var(--blue); }
+  .tag-green { background: var(--green-soft); color: var(--green); }
+  .tag-amber { background: var(--amber-soft); color: var(--amber); }
+  .tag-gray { background: var(--gray-soft); color: var(--gray); }
+
+  .hidden { display: none; }
+  .back-btn { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 5px 12px; font-size: 12px; cursor: pointer; color: var(--text-secondary); }
+  .back-btn:hover { background: var(--bg); }
+  .detail-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px; }
+  @media (max-width: 600px) { .detail-row { grid-template-columns: 1fr; } }
+  .detail-row div span:first-child { color: var(--text-tertiary); margin-right: 6px; }
+  .section-title { font-size: 12px; font-weight: 600; color: var(--text-tertiary); margin: 0 0 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .table-scroll { overflow-x: auto; }
+  .loading { text-align: center; padding: 2rem; color: var(--text-secondary); font-size: 13px; }
+
+  /* 詳情頁重點資訊卡 */
+  .hero-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 0; }
+  @media (max-width: 600px) { .hero-grid { grid-template-columns: 1fr 1fr; } }
+  .hero-box { background: var(--bg); border-radius: 12px; padding: 0.9rem 1rem; }
+  .hero-box p:first-child { font-size: 11.5px; color: var(--text-tertiary); margin: 0 0 5px; font-weight: 600; }
+  .hero-box p:last-child { font-size: 16px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+
+  .photo-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  @media (max-width: 600px) { .photo-grid { grid-template-columns: repeat(2, 1fr); } }
+  .photo-box { background: var(--bg); border-radius: 10px; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; color: var(--text-tertiary); text-decoration: none; font-size: 22px; }
+  .photo-box:hover { background: var(--gray-soft); }
+
+  .file-card { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--bg); border-radius: 10px; margin-bottom: 6px; text-decoration: none; color: var(--text); font-size: 13px; }
+  .file-card:hover { background: var(--gray-soft); }
+  .file-card .arrow { margin-left: auto; color: var(--text-tertiary); }
+  .empty-note { font-size: 12.5px; color: var(--text-tertiary); }
+
+  .nature-badge { font-size: 10.5px; color: var(--text-tertiary); background: var(--gray-bg); padding: 2px 8px; border-radius: 6px; margin-left: 8px; font-weight: 500; }
+
+  .detail-tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+  .detail-tab { font-size: 13px; font-weight: 500; padding: 9px 14px; cursor: pointer; color: var(--text-tertiary); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .detail-tab.active { color: var(--text); border-bottom-color: var(--text); font-weight: 600; }
+  .tab-panel.hidden { display: none; }
+
+  .hero-box .hero-icon { font-size: 13px; margin-right: 3px; }
+</style>
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>🏢 集團展覽管理中心</h1>
+    <span id="updated-label"></span>
+  </header>
+
+  <div class="year-tabs" id="year-tabs"></div>
+
+  <div id="loading" class="loading">資料載入中...</div>
+
+  <!-- 主畫面：總覽 + 一覽表 -->
+  <div id="view-main" class="hidden">
+    <div class="card">
+      <p class="section-title" id="stats-year-label">2026 年度展覽進度</p>
+      <div class="stats-grid">
+        <div class="stat-box stat-total"><p>全年展覽數</p><p id="stat-total">-</p></div>
+        <div class="stat-box stat-confirmed"><p>確定參加</p><p id="stat-confirmed">-</p></div>
+        <div class="stat-box stat-evaluating"><p>評估中</p><p id="stat-evaluating">-</p></div>
+        <div class="stat-box stat-done"><p>已結案</p><p id="stat-done">-</p></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="section-title">展覽一覽　·　點任一筆查看詳情</p>
+      <div id="group-confirmed"></div>
+      <div id="group-evaluating"></div>
+      <div id="group-done"></div>
+      <div id="group-skipped"></div>
+    </div>
+  </div>
+
+  <!-- 詳情畫面 -->
+  <div id="view-detail" class="hidden">
+    <button class="back-btn" onclick="showMain()">← 返回總覽</button>
+    <div class="card" style="margin-top:10px;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+        <span id="d-name" style="font-size:18px; font-weight:700;"></span>
+        <span id="d-status" class="tag" style="margin-left:auto;"></span>
+      </div>
+      <div class="hero-grid">
+        <div class="hero-box"><p><span class="hero-icon">📅</span>展期</p><p id="d-date"></p></div>
+        <div class="hero-box"><p><span class="hero-icon">📍</span>地點</p><p id="d-place"></p></div>
+        <div class="hero-box"><p><span class="hero-icon">🏷️</span>攤位</p><p id="d-booth"></p></div>
+        <div class="hero-box"><p><span class="hero-icon">📐</span>攤位大小</p><p id="d-boothsize"></p></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="detail-tabs">
+        <div class="detail-tab active" data-tab="basic" onclick="switchTab('basic')">基本資訊</div>
+        <div class="detail-tab" data-tab="budget" onclick="switchTab('budget')">預算與補助</div>
+        <div class="detail-tab" data-tab="files" onclick="switchTab('files')">文件與素材</div>
+      </div>
+
+      <div class="tab-panel" id="tab-basic">
+        <div class="detail-row" style="margin-bottom:16px;">
+          <div><span>參展性質</span><span id="d-nature"></span></div>
+          <div><span>執行單位</span><span id="d-unit"></span></div>
+          <div><span>業務參展人</span><span id="d-salesperson"></span></div>
+        </div>
+        <p class="section-title">備註說明</p>
+        <p id="d-note" style="font-size:13px; margin:0; color:var(--text-secondary);"></p>
+      </div>
+
+      <div class="tab-panel hidden" id="tab-budget">
+        <div class="detail-row">
+          <div><span>預算費用</span><span id="d-budget"></span></div>
+          <div><span>補助申請金額</span><span id="d-subsidy-apply"></span></div>
+          <div><span>補助核准金額</span><span id="d-subsidy-approved"></span></div>
+          <div><span>補助核銷狀態</span><span id="d-subsidy-status"></span></div>
+        </div>
+      </div>
+
+      <div class="tab-panel hidden" id="tab-files">
+        <p class="section-title" style="margin-top:0;">現場照片</p>
+        <div id="d-photos" style="margin-bottom:16px;"></div>
+        <p class="section-title">宣傳素材</p>
+        <div id="d-promo" style="margin-bottom:16px;"></div>
+        <p class="section-title">結案報告　<span id="d-report-needed" style="font-weight:400; text-transform:none; letter-spacing:0; color:var(--text-tertiary);"></span></p>
+        <div id="d-report"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ====== 設定區：資料來源已改為公司 SharePoint ======
+const MSAL_CONFIG = {
+  auth: {
+    clientId: 'bec4f97b-ca7e-4841-94e1-d514f27d71bb',
+    authority: 'https://login.microsoftonline.com/c202d9ba-2e47-4aff-88e1-1fb71692a54b',
+    redirectUri: 'https://yulunyeh0731.github.io/'
+  },
+  cache: { cacheLocation: 'sessionStorage' }
+};
+const GRAPH_SITE_ID = 'texray.sharepoint.com,523489e7-e84e-4554-96f9-2a27018db21a,fc5dd947-527e-47f8-8762-02c81a22d02a';
+const GRAPH_LIST_ID = '044e6df5-fc21-4dfb-a539-21299d6ea20f';
+const SCOPES = ['https://graph.microsoft.com/Sites.Read.All'];
+
+// SharePoint 英文內部名稱 → 畫面用的中文鍵值。
+// 有了這層對應，下方所有繪製程式碼完全不需要修改。
+const FIELD_MAP = {
+  Title: '展覽名稱', Year: '年度', Status: '參展狀態',
+  StartDate: '展期開始', EndDate: '展期結束',
+  City: '地點城市', Country: '國家',
+  BoothNo: 'BoothNo', BoothSize: 'BoothSize',
+  ExhibitionType: '參展性質', ExecutionUnit: '執行單位',
+  SalesPerson: '業務參展人',
+  Budget: '預算費用', SubsidyApplied: '補助申請金額',
+  SubsidyApproved: '補助核准金額', SubsidyStatus: '補助核銷狀態',
+  NeedClosingReport: '是否需要結案簡報',
+  Remarks: '備註說明',
+  PhotoFolderUrl: '照片資料夾連結', BannerUrl: 'Banner連結',
+  InvitationUrl: '邀請函連結', ClosingReportUrl: '結案報告連結'
+};
+
+let exhibitions = [];
+let msalApp = null;
+
+function toSlashDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return String(iso);
+  const p = n => String(n).padStart(2, '0');
+  return d.getUTCFullYear() + '/' + p(d.getUTCMonth() + 1) + '/' + p(d.getUTCDate());
+}
+
+function normalize(f) {
+  const o = {};
+  for (const en in FIELD_MAP) {
+    const zh = FIELD_MAP[en];
+    let v = f[en];
+    if (v === undefined || v === null) { o[zh] = ''; continue; }
+    if (en === 'StartDate' || en === 'EndDate') o[zh] = toSlashDate(v);
+    else if (en === 'NeedClosingReport') o[zh] = (v === true) ? '是' : '否';
+    else if (typeof v === 'object') o[zh] = v.Url || '';
+    else o[zh] = String(v);
+  }
+  return o;
+}
+
+async function getToken() {
+  let acct = msalApp.getAllAccounts()[0];
+  if (!acct) acct = (await msalApp.loginPopup({ scopes: SCOPES })).account;
+  try {
+    return (await msalApp.acquireTokenSilent({ scopes: SCOPES, account: acct })).accessToken;
+  } catch (e) {
+    return (await msalApp.acquireTokenPopup({ scopes: SCOPES })).accessToken;
+  }
+}
+
+const STATUS_COLOR = {
+  '確定參加': 'blue', '評估中': 'amber', '已結案': 'gray', '暫不參加': 'gray'
+};
+
+let currentYear = null;
+
+function statusTag(status) {
+  const color = STATUS_COLOR[status] || 'gray';
+  return `<span class="tag tag-${color}">${status || '-'}</span>`;
+}
+
+function fmtMoney(v) {
+  if (!v) return '-';
+  const n = Number(v);
+  if (isNaN(n)) return v;
+  return 'NT$ ' + n.toLocaleString();
+}
+
+async function loadData() {
+  const loading = document.getElementById('loading');
+  try {
+    msalApp = new msal.PublicClientApplication(MSAL_CONFIG);
+    if (msalApp.initialize) await msalApp.initialize();
+
+    loading.textContent = '請在彈出視窗完成公司帳號登入…';
+    const token = await getToken();
+
+    loading.textContent = '資料載入中…';
+    const url = 'https://graph.microsoft.com/v1.0/sites/' + GRAPH_SITE_ID +
+                '/lists/' + GRAPH_LIST_ID + '/items?expand=fields&$top=500';
+    const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+    if (!res.ok) throw new Error('Graph ' + res.status + '：' + (await res.text()).slice(0, 300));
+
+    const data = await res.json();
+    exhibitions = data.value.map(it => normalize(it.fields || {}))
+                            .filter(e => e['展覽名稱']);
+
+    loading.classList.add('hidden');
+    document.getElementById('updated-label').textContent =
+      '更新時間：' + new Date().toLocaleString('zh-TW');
+    renderYearTabs();
+    showMain();
+  } catch (err) {
+    loading.textContent = '載入失敗：' + (err.message || err);
+    console.error(err);
+  }
+}
+
+function renderYearTabs() {
+  const years = [...new Set(exhibitions.map(e => e['年度']).filter(Boolean))].sort();
+  currentYear = years[years.length - 1] || null;
+  const wrap = document.getElementById('year-tabs');
+  // 未來可擴增年度先預留 placeholder（無資料時顯示為灰階不可點擊）
+  const allYears = [...new Set([...years, String(Number(currentYear) + 1)])];
+  wrap.innerHTML = allYears.map(y => {
+    const hasData = years.includes(y);
+    return `<button class="year-tab ${y === currentYear ? 'active' : ''}" ${hasData ? `onclick="selectYear('${y}')"` : 'disabled'}>${y}${hasData ? '' : '（尚無資料）'}</button>`;
+  }).join('');
+  renderYearView();
+}
+
+function selectYear(y) {
+  currentYear = y;
+  document.querySelectorAll('.year-tab').forEach(b => b.classList.toggle('active', b.textContent.startsWith(y)));
+  renderYearView();
+}
+
+function renderYearView() {
+  const list = exhibitions.filter(e => e['年度'] === currentYear);
+  document.getElementById('stats-year-label').textContent = `${currentYear} 年度展覽進度`;
+  renderStats(list);
+  renderGroupedList(list);
+}
+
+function renderStats(list) {
+  document.getElementById('stat-total').textContent = list.length;
+  document.getElementById('stat-confirmed').textContent = list.filter(e => e['參展狀態'] === '確定參加').length;
+  document.getElementById('stat-evaluating').textContent = list.filter(e => e['參展狀態'] === '評估中').length;
+  document.getElementById('stat-done').textContent = list.filter(e => e['參展狀態'] === '已結案').length;
+}
+
+function exRowHtml(ex) {
+  const idx = exhibitions.indexOf(ex);
+  const color = STATUS_COLOR[ex['參展狀態']] || 'gray';
+  return `
+    <div class="ex-row c-${color}" onclick="showDetail(${idx})">
+      <span class="ex-name">${ex['展覽名稱'] || ''}${ex['參展性質'] ? `<span class="nature-badge">${ex['參展性質']}</span>` : ''}</span>
+      <span class="ex-date">${shortDate(ex['展期開始'])} - ${shortDate(ex['展期結束'])}</span>
+      <span class="ex-place">${ex['地點城市'] || ''}</span>
+      ${statusTag(ex['參展狀態'])}
+    </div>`;
+}
+
+function renderGroupedList(list) {
+  const confirmed = list.filter(e => e['參展狀態'] === '確定參加');
+  const evaluating = list.filter(e => e['參展狀態'] === '評估中');
+  const done = list.filter(e => e['參展狀態'] === '已結案');
+  const skipped = list.filter(e => e['參展狀態'] === '暫不參加');
+
+  document.getElementById('group-confirmed').innerHTML = confirmed.length
+    ? `<p class="group-label">確定參加（${confirmed.length}）</p>${confirmed.map(exRowHtml).join('')}` : '';
+  document.getElementById('group-evaluating').innerHTML = evaluating.length
+    ? `<p class="group-label">評估中（${evaluating.length}）</p>${evaluating.map(exRowHtml).join('')}` : '';
+  document.getElementById('group-done').innerHTML = done.length
+    ? `<p class="group-label">已結案（${done.length}）</p>${done.map(exRowHtml).join('')}` : '';
+  document.getElementById('group-skipped').innerHTML = skipped.length
+    ? `<p class="collapse-toggle" onclick="toggleSkipped()">▸ 暫不參加（${skipped.length}）— 點擊展開</p>
+       <div id="skipped-list" class="collapsed">${skipped.map(exRowHtml).join('')}</div>` : '';
+}
+
+function toggleSkipped() {
+  const el = document.getElementById('skipped-list');
+  el.classList.toggle('collapsed');
+}
+
+function shortDate(d) {
+  if (!d) return '-';
+  const parts = d.split('/');
+  return parts.length === 3 ? `${parts[1]}/${parts[2]}` : d;
+}
+
+function fileCard(label, url, icon) {
+  if (!url) return '';
+  return `<a class="file-card" href="${url}" target="_blank" rel="noopener">
+    <span>${icon}</span><span>${label}</span><span class="arrow">↓</span>
+  </a>`;
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.detail-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.id !== 'tab-' + name));
+}
+
+function showDetail(idx) {
+  const ex = exhibitions[idx];
+  switchTab('basic');
+  document.getElementById('d-name').textContent = ex['展覽名稱'] || '';
+  document.getElementById('d-status').outerHTML = `<span id="d-status" class="tag tag-${STATUS_COLOR[ex['參展狀態']] || 'gray'}" style="margin-left:auto;">${ex['參展狀態'] || '-'}</span>`;
+  document.getElementById('d-date').textContent = `${shortDate(ex['展期開始'])} - ${shortDate(ex['展期結束'])}`;
+  document.getElementById('d-place').textContent = `${ex['地點城市'] || ''}`;
+  document.getElementById('d-booth').textContent = ex['BoothNo'] || '未提供';
+  document.getElementById('d-boothsize').textContent = ex['BoothSize'] || '-';
+  document.getElementById('d-nature').textContent = ex['參展性質'] || '-';
+  document.getElementById('d-unit').textContent = ex['執行單位'] || '-';
+  document.getElementById('d-salesperson').textContent = ex['業務參展人'] || '-';
+  document.getElementById('d-budget').textContent = fmtMoney(ex['預算費用']);
+  document.getElementById('d-subsidy-apply').textContent = fmtMoney(ex['補助申請金額']);
+  document.getElementById('d-subsidy-approved').textContent = fmtMoney(ex['補助核准金額']);
+  document.getElementById('d-subsidy-status').textContent = ex['補助核銷狀態'] || '-';
+  document.getElementById('d-report-needed').textContent = ex['是否需要結案簡報'] === '是' ? '（需要結案簡報）' : '';
+  document.getElementById('d-note').textContent = ex['備註說明'] || '（無）';
+
+  // 照片：改為單一資料夾連結（欄位：照片資料夾連結）
+  document.getElementById('d-photos').innerHTML = ex['照片資料夾連結']
+    ? fileCard('查看現場照片資料夾', ex['照片資料夾連結'], '📁')
+    : `<p class="empty-note">尚無照片，可至文件庫上傳後在 Google Sheet 補上資料夾連結。</p>`;
+
+  // 宣傳素材：Banner連結、邀請函連結
+  const promoHtml = fileCard('Email Banner', ex['Banner連結'], '🖼️') + fileCard('邀請函', ex['邀請函連結'], '✉️');
+  document.getElementById('d-promo').innerHTML = promoHtml || `<p class="empty-note">尚無宣傳素材。</p>`;
+
+  // 結案報告
+  const reportHtml = fileCard(`${ex['展覽名稱'] || ''} 結案簡報`, ex['結案報告連結'], '📊');
+  document.getElementById('d-report').innerHTML = reportHtml || `<p class="empty-note">尚無結案報告，展覽結束後可補上連結。</p>`;
+
+  document.getElementById('view-main').classList.add('hidden');
+  document.getElementById('view-detail').classList.remove('hidden');
+  window.scrollTo(0, 0);
+}
+
+function showMain() {
+  document.getElementById('view-detail').classList.add('hidden');
+  document.getElementById('view-main').classList.remove('hidden');
+}
+
+loadData();
+</script>
+</body>
+</html>
