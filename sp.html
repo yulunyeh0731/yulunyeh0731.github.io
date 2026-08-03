@@ -117,7 +117,8 @@
 
   .hero-box .hero-icon { font-size: 13px; margin-right: 3px; }
 </style>
-<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.39.0/lib/msal-browser.min.js"></script>
+<script>window.addEventListener('error',function(e){if(e.target&&e.target.tagName==='SCRIPT'){var l=document.getElementById('loading');if(l)l.textContent='\u767b\u5165\u51fd\u5f0f\u5eab\u8f09\u5165\u5931\u6557\uff0c\u8acb\u78ba\u8a8d\u7db2\u8def\u662f\u5426\u80fd\u5b58\u53d6 cdn.jsdelivr.net';}},true);</script>
 </head>
 <body>
 <div class="wrap">
@@ -294,6 +295,9 @@ function fmtMoney(v) {
 async function loadData() {
   const loading = document.getElementById('loading');
   try {
+    if (typeof msal === 'undefined') {
+      throw new Error('\u767b\u5165\u51fd\u5f0f\u5eab\uff08MSAL\uff09\u672a\u8f09\u5165\uff0c\u53ef\u80fd\u662f\u516c\u53f8\u7db2\u8def\u6216\u9632\u706b\u7246\u64cb\u4f4f\u4e86 cdn.jsdelivr.net');
+    }
     msalApp = new msal.PublicClientApplication(MSAL_CONFIG);
     if (msalApp.initialize) await msalApp.initialize();
 
