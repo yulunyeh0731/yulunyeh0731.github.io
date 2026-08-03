@@ -116,6 +116,19 @@
   .tab-panel.hidden { display: none; }
 
   .hero-box .hero-icon { font-size: 13px; margin-right: 3px; }
+
+  .stage-set { display: flex; gap: 4px; flex: 0 0 auto; }
+  .stage { font-size: 11px; padding: 2px 7px; border-radius: 99px; white-space: nowrap; }
+  .stage-on  { background: var(--green-soft); color: var(--green); }
+  .stage-off { background: var(--gray-soft);  color: var(--gray); }
+  .ex-booth { font-size: 12px; color: var(--text-secondary); flex: 0 0 auto; background: var(--gray-bg); padding: 2px 8px; border-radius: 6px; }
+  .ex-count { font-size: 12px; font-weight: 600; flex: 0 0 auto; min-width: 58px; text-align: right; }
+  .cnt-soon { color: var(--blue); }
+  .cnt-now  { color: var(--green); }
+  .cnt-past { color: var(--text-tertiary); font-weight: 500; }
+  @media (max-width: 600px) {
+    .ex-count { text-align: left; min-width: 0; }
+  }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.39.0/lib/msal-browser.min.js"></script>
 <script>window.addEventListener('error',function(e){if(e.target&&e.target.tagName==='SCRIPT'){var l=document.getElementById('loading');if(l)l.textContent='\u767b\u5165\u51fd\u5f0f\u5eab\u8f09\u5165\u5931\u6557\uff0c\u8acb\u78ba\u8a8d\u7db2\u8def\u662f\u5426\u80fd\u5b58\u53d6 cdn.jsdelivr.net';}},true);</script>
@@ -142,6 +155,7 @@
         <div class="stat-box stat-evaluating"><p>評估中</p><p id="stat-evaluating">-</p></div>
         <div class="stat-box stat-done"><p>已結案</p><p id="stat-done">-</p></div>
       </div>
+      <p id="next-ex" style="font-size:13px; margin:14px 0 0; padding-top:12px; border-top:1px solid var(--border); color:var(--text-secondary);"></p>
     </div>
 
     <div class="card">
@@ -236,7 +250,8 @@ const FIELD_MAP = {
   NeedClosingReport: '是否需要結案簡報',
   Remarks: '備註說明',
   PhotoFolderUrl: '照片資料夾連結', BannerUrl: 'Banner連結',
-  InvitationUrl: '邀請函連結', ClosingReportUrl: '結案報告連結'
+  InvitationUrl: '邀請函連結', ClosingReportUrl: '結案報告連結',
+  RegDone: '報名', PayDone: '繳費', BoothDone: '選位'
 };
 
 let exhibitions = [];
@@ -257,7 +272,9 @@ function normalize(f) {
     let v = f[en];
     if (v === undefined || v === null) { o[zh] = ''; continue; }
     if (en === 'StartDate' || en === 'EndDate') o[zh] = toSlashDate(v);
-    else if (en === 'NeedClosingReport') o[zh] = (v === true) ? '是' : '否';
+    else if (en === 'NeedClosingReport' || en === 'RegDone'
+             || en === 'PayDone' || en === 'BoothDone')
+      o[zh] = (v === true) ? '是' : '否';
     else if (typeof v === 'object') o[zh] = v.Url || '';
     else o[zh] = String(v);
   }
@@ -356,21 +373,51 @@ function renderStats(list) {
   document.getElementById('stat-confirmed').textContent = list.filter(e => e['參展狀態'] === '確定參加').length;
   document.getElementById('stat-evaluating').textContent = list.filter(e => e['參展狀態'] === '評估中').length;
   document.getElementById('stat-done').textContent = list.filter(e => e['參展狀態'] === '已結案').length;
+
+  // 下一場：確定參加中，尚未結束且最接近今天的那一場
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const upcoming = list
+    .filter(e => e['參展狀態'] === '確定參加')
+    .filter(e => { const d = parseDate(e['展期結束']) || parseDate(e['展期開始']); return d && d >= today; })
+    .sort(byStartDate);
+  const el = document.getElementById('next-ex');
+  if (upcoming.length) {
+    const n = upcoming[0], di = daysInfo(n);
+    el.innerHTML = `下一場　<strong style="color:var(--text);">${n['展覽名稱']}</strong>`
+      + `　·　${shortDate(n['展期開始'])} 開展　·　`
+      + `<span class="${di.cls}" style="font-weight:600;">${di.text}</span>`
+      + (n['地點城市'] ? `　·　${n['地點城市']}` : '');
+  } else {
+    el.textContent = '本年度已無未結束的確定參加場次。';
+  }
 }
 
 function exRowHtml(ex) {
   const idx = exhibitions.indexOf(ex);
   const color = STATUS_COLOR[ex['參展狀態']] || 'gray';
+  const di = daysInfo(ex);
   return `
     <div class="ex-row c-${color}" onclick="showDetail(${idx})">
       <span class="ex-name">${ex['展覽名稱'] || ''}${ex['參展性質'] ? `<span class="nature-badge">${ex['參展性質']}</span>` : ''}</span>
+      ${stageSetHtml(ex)}
       <span class="ex-date">${shortDate(ex['展期開始'])} - ${shortDate(ex['展期結束'])}</span>
+      ${ex['BoothNo'] ? `<span class="ex-booth">${ex['BoothNo']}</span>` : ''}
       <span class="ex-place">${ex['地點城市'] || ''}</span>
+      <span class="ex-count ${di.cls}">${di.text}</span>
       ${statusTag(ex['參展狀態'])}
     </div>`;
 }
 
+function byStartDate(a, b) {
+  const da = parseDate(a['展期開始']), db = parseDate(b['展期開始']);
+  if (!da && !db) return 0;
+  if (!da) return 1;
+  if (!db) return -1;
+  return da - db;
+}
+
 function renderGroupedList(list) {
+  list = list.slice().sort(byStartDate);
   const confirmed = list.filter(e => e['參展狀態'] === '確定參加');
   const evaluating = list.filter(e => e['參展狀態'] === '評估中');
   const done = list.filter(e => e['參展狀態'] === '已結案');
@@ -390,6 +437,33 @@ function renderGroupedList(list) {
 function toggleSkipped() {
   const el = document.getElementById('skipped-list');
   el.classList.toggle('collapsed');
+}
+
+function parseDate(d) {
+  if (!d) return null;
+  const p = String(d).split('/');
+  if (p.length !== 3) return null;
+  const dt = new Date(+p[0], +p[1] - 1, +p[2]);
+  return isNaN(dt) ? null : dt;
+}
+
+// 回傳 { text, cls } —— 展期倒數／進行中／已結束
+function daysInfo(ex) {
+  const s = parseDate(ex['展期開始']), e = parseDate(ex['展期結束']) || s;
+  if (!s) return { text: '', cls: '' };
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  if (e && today > e) return { text: '已結束', cls: 'cnt-past' };
+  if (today >= s)     return { text: '進行中', cls: 'cnt-now' };
+  const n = Math.round((s - today) / 86400000);
+  return { text: '還有 ' + n + ' 天', cls: 'cnt-soon' };
+}
+
+// 三個前置階段標籤，只在「確定參加／評估中」顯示
+function stageSetHtml(ex) {
+  const st = ex['參展狀態'];
+  if (st !== '確定參加' && st !== '評估中') return '';
+  const pill = k => `<span class="stage ${ex[k] === '是' ? 'stage-on' : 'stage-off'}">${k}</span>`;
+  return `<span class="stage-set">${pill('報名')}${pill('繳費')}${pill('選位')}</span>`;
 }
 
 function shortDate(d) {
