@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TEX-RAY 工作系統</title>
+<title>工作台</title>
 <style>
   :root {
     /* 語意色系：藍=確定進行中、橘黃=待決定、綠=已完成、灰=不適用/已過 */
@@ -35,7 +35,9 @@
     background: var(--card); border-right: 1px solid var(--border);
     min-height: 100vh; padding: 1rem 0.6rem; position: sticky; top: 0;
   }
-  .brand { font-size: 13px; font-weight: 700; padding: 4px 10px 14px; letter-spacing: -0.01em; }
+  .brand { padding: 4px 10px 14px; }
+  .brand-name { display: block; font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
+  .brand-sub { display: block; font-size: 11px; color: var(--text-tertiary); margin-top: 3px; }
   .nav-group { font-size: 10.5px; font-weight: 600; color: var(--text-tertiary);
     text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 10px 4px; }
   .nav-item {
@@ -199,7 +201,10 @@
 <div class="shell">
 
   <aside class="sidebar" id="sidebar">
-    <div class="brand">TEX-RAY 工作系統</div>
+    <div class="brand">
+      <span class="brand-name">工作台</span>
+      <span class="brand-sub">Yulun ・ 企劃與總務</span>
+    </div>
     <button class="nav-item ready active" data-mod="dashboard" onclick="go('dashboard')"><span class="dot"></span>儀表板</button>
 
     <div class="nav-group">工作</div>
@@ -236,8 +241,8 @@
     <div id="loading" class="loading">啟動中…</div>
 
     <div id="signin" class="card hidden" style="text-align:center; padding:2.5rem 1.25rem;">
-      <p style="font-size:15px; font-weight:600; margin:0 0 6px;">TEX-RAY 工作系統</p>
-      <p style="font-size:13px; color:var(--text-secondary); margin:0 0 20px;">請使用公司帳號登入</p>
+      <p style="font-size:16px; font-weight:600; margin:0 0 4px;">工作台</p>
+      <p style="font-size:12px; color:var(--text-tertiary); margin:0 0 22px;">Yulun ・ 企劃與總務</p>
       <button onclick="signIn()" style="font-family:inherit; font-size:14px; font-weight:600;
         background:var(--text); color:#fff; border:0; border-radius:10px; padding:11px 26px; cursor:pointer;">
         使用公司帳號登入
