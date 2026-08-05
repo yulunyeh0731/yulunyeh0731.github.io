@@ -235,6 +235,16 @@
 
     <div id="loading" class="loading">啟動中…</div>
 
+    <div id="signin" class="card hidden" style="text-align:center; padding:2.5rem 1.25rem;">
+      <p style="font-size:15px; font-weight:600; margin:0 0 6px;">TEX-RAY 工作系統</p>
+      <p style="font-size:13px; color:var(--text-secondary); margin:0 0 20px;">請使用公司帳號登入</p>
+      <button onclick="signIn()" style="font-family:inherit; font-size:14px; font-weight:600;
+        background:var(--text); color:#fff; border:0; border-radius:10px; padding:11px 26px; cursor:pointer;">
+        使用公司帳號登入
+      </button>
+      <p id="signin-hint" class="empty-note" style="margin:18px 0 0; line-height:1.8;"></p>
+    </div>
+
     <!-- ============ 模組：儀表板 ============ -->
     <div id="mod-dashboard" class="module hidden">
       <div class="card">
@@ -405,18 +415,10 @@ let msalApp = null;
 let activeAccount = null;
 let canWrite = false;
 
-// 手機瀏覽器與 LINE／Teams 等內建瀏覽器會擋 window.open，
-// 所以那些環境改用整頁轉向登入。
-function needsRedirect() {
+// LINE／Teams 等內建瀏覽器常擋 window.open，用來決定要不要顯示「改用 Safari 開啟」的提示。
+function isInAppBrowser() {
   const ua = navigator.userAgent || '';
-  const inApp = /Line\/|FBAN|FBAV|Instagram|MicroMessenger|Teams|wv\)/i.test(ua);
-  const narrow = window.matchMedia('(max-width: 820px)').matches;
-  return inApp || narrow;
-}
-
-function isPopupBlocked(e) {
-  const s = String((e && (e.errorCode || e.message)) || '');
-  return /popup_window_error|empty_window_error|popup_window_timeout|blocked/i.test(s);
+  return /Line\/|FBAN|FBAV|Instagram|MicroMessenger|Teams|wv\)/i.test(ua);
 }
 
 // 靜默偵測有沒有可寫入權限。IT 核准後這裡會自動成功，不需要改程式或重新授權。
@@ -434,11 +436,10 @@ async function getToken() {
   try {
     return (await msalApp.acquireTokenSilent({ scopes, account: activeAccount })).accessToken;
   } catch (e) {
-    if (needsRedirect()) {
-      await msalApp.acquireTokenRedirect({ scopes, redirectUri: REDIRECT_URI });
-      return new Promise(() => {});   // 頁面即將跳離
-    }
-    return (await msalApp.acquireTokenPopup({ scopes })).accessToken;
+    // 只用整頁轉向。不用彈出視窗——因為重新導向 URI 是根目錄，
+    // 彈出視窗會把整套系統在裡面再跑一次，兩邊搶同一份授權碼。
+    await msalApp.acquireTokenRedirect({ scopes });
+    return new Promise(() => {});   // 頁面即將跳離
   }
 }
 
@@ -847,12 +848,60 @@ function renderDashboard() {
    ================================================================ */
 function showError(msg) {
   document.querySelectorAll('.module').forEach(m => m.classList.add('hidden'));
+  document.getElementById('signin').classList.add('hidden');
   const loading = document.getElementById('loading');
   loading.classList.remove('hidden');
   loading.innerHTML = '載入失敗：' + msg
     + '<br><button class="back-btn" style="margin-top:12px;" onclick="location.reload()">重新載入</button>'
     + '<br><span class="empty-note" style="display:inline-block; margin-top:8px;">'
     + '上一版仍可使用：<a href="./archive/sp.html">archive/sp.html</a></span>';
+}
+
+function showSignIn() {
+  document.getElementById('loading').classList.add('hidden');
+  document.querySelectorAll('.module').forEach(m => m.classList.add('hidden'));
+  document.getElementById('signin').classList.remove('hidden');
+  document.getElementById('signin-hint').innerHTML = isInAppBrowser()
+    ? '你目前是在 LINE 或 Teams 的內建瀏覽器裡開啟。<br>'
+      + '若登入卡住，請用選單選「用 Safari 開啟」或「用預設瀏覽器開啟」。'
+    : '';
+}
+
+// 由使用者點按觸發，整頁跳去 Microsoft 登入再跳回來。
+// 刻意不用彈出視窗：重新導向 URI 是根目錄，彈出視窗會讓整套系統在裡面再跑一次。
+async function signIn() {
+  const hint = document.getElementById('signin-hint');
+  hint.textContent = '正在前往 Microsoft 登入頁…';
+  try {
+    await msalApp.loginRedirect({ scopes: SCOPE_RO });
+  } catch (e) {
+    hint.innerHTML = '登入失敗：' + (e.message || e);
+  }
+}
+
+async function loadData() {
+  const loading = document.getElementById('loading');
+  loading.classList.remove('hidden');
+  try {
+    if (msalApp.setActiveAccount) msalApp.setActiveAccount(activeAccount);
+
+    // 靜默確認寫入權限。核准前為唯讀，核准後自動變可寫入。
+    await probeWrite();
+    setModeBadge();
+
+    loading.textContent = '資料載入中…';
+    const raw = await spGet('exhibitions');
+    exhibitions = raw.map(it => normalize(it.fields || {}, it.id)).filter(e => e['展覽名稱']);
+
+    loading.classList.add('hidden');
+    document.getElementById('updated-label').textContent =
+      '更新時間：' + new Date().toLocaleString('zh-TW');
+    renderYearTabs();
+    go('dashboard');
+  } catch (err) {
+    showError(err.message || err);
+    console.error(err);
+  }
 }
 
 async function boot() {
@@ -870,41 +919,13 @@ async function boot() {
       if (r && r.account) activeAccount = r.account;
     } catch (e) {
       console.warn('handleRedirectPromise:', e && e.message);
+      document.getElementById('signin-hint').innerHTML =
+        '上次的跳轉登入沒有完成：' + (e.message || e);
     }
     if (!activeAccount) activeAccount = msalApp.getAllAccounts()[0] || null;
 
-    // 尚未登入：手機／內建瀏覽器走整頁轉向，桌機走彈出視窗
-    if (!activeAccount) {
-      loading.textContent = '請完成公司帳號登入…';
-      if (needsRedirect()) {
-        await msalApp.loginRedirect({ scopes: SCOPE_RO, redirectUri: REDIRECT_URI });
-        return;
-      }
-      try {
-        activeAccount = (await msalApp.loginPopup({ scopes: SCOPE_RO })).account;
-      } catch (e) {
-        if (isPopupBlocked(e)) {
-          await msalApp.loginRedirect({ scopes: SCOPE_RO, redirectUri: REDIRECT_URI });
-          return;
-        }
-        throw e;
-      }
-    }
-    if (msalApp.setActiveAccount) msalApp.setActiveAccount(activeAccount);
-
-    // 靜默確認寫入權限。核准前為唯讀，核准後自動變可寫入。
-    await probeWrite();
-    setModeBadge();
-
-    loading.textContent = '資料載入中…';
-    const raw = await spGet('exhibitions');
-    exhibitions = raw.map(it => normalize(it.fields || {}, it.id)).filter(e => e['展覽名稱']);
-
-    loading.classList.add('hidden');
-    document.getElementById('updated-label').textContent =
-      '更新時間：' + new Date().toLocaleString('zh-TW');
-    renderYearTabs();
-    go('dashboard');
+    if (!activeAccount) { showSignIn(); return; }
+    await loadData();
   } catch (err) {
     showError(err.message || err);
     console.error(err);
