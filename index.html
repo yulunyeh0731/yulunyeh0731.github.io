@@ -16,7 +16,11 @@
        藍=確定進行中、橘黃=待決定、綠=已完成、灰=不適用/已過                    */
     --blue:  #3D74C9;   --blue-bg:  #F4F7FC;   --blue-soft:  #F4F7FC;   --blue-text:  #396CBA;
     --amber: #C78803;   --amber-bg: #FEF7E7;   --amber-soft: #FEF7E7;
-    --green: #3E9B70;   --green-bg: #F1F6F3;   --green-soft: #F1F6F3;   --green-text: #327858;
+    /* --green-soft 原本是 #F1F6F3，三個通道差距只有 5，實質上是中性灰，
+       跟 --gray-soft #F3F3F1 無法區分。改成通道差距 15 的 #DCEBE3，
+       一個變數同時修好階段標籤與狀態標籤兩層。--green-bg 是統計卡底色，
+       沒有並排比較的問題，維持原值。 */
+    --green: #3E9B70;   --green-bg: #F1F6F3;   --green-soft: #DCEBE3;   --green-text: #327858;
     --gray:  #97938A;                          --gray-soft:  #F3F3F1;
     --red:   #B91C1C;   --red-bg:   #FEF2F2;   --red-soft:   #FBD5D5;
 
@@ -115,9 +119,16 @@
 
   .group-label { font-size: 12px; font-weight: 600; color: var(--text-tertiary); margin: 18px 0 8px; text-transform: uppercase; letter-spacing: 0.04em; }
   .group-label:first-child { margin-top: 0; }
+  /* 兩行式。舊版是單行 flex 配 flex: 比例，而且有些格子沒資料就不畫
+     （已結案沒有階段標籤、沒攤位號的場次沒有攤位格），少一格後面就整排位移，
+     所以每一列的日期地點都落在不同位置。
+     改法不是加固定欄寬去對齊，而是拿掉欄位這件事本身：
+     第二行左邊是一串文字，日期格式固定 13 字元加上等寬數字，
+     所有列的日期同寬，後面的地點自然對齊。任何寬度都不會擠爆、不會切字。 */
   .ex-row {
-    display: flex; align-items: center; gap: 12px; padding: 11px 8px;
-    border-bottom: 1px solid var(--border); cursor: pointer; border-left: 3px solid transparent;
+    padding: 9px 8px; border-bottom: 1px solid var(--border);
+    cursor: pointer; border-left: 3px solid transparent;
+    font-variant-numeric: tabular-nums;
   }
   .ex-row:last-child { border-bottom: none; }
   .ex-row:hover { background: var(--bg); }
@@ -125,14 +136,13 @@
   .ex-row.c-amber { border-left-color: var(--amber); }
   .ex-row.c-green { border-left-color: var(--green); }
   .ex-row.c-gray { border-left-color: var(--gray); }
-  .ex-name { font-size: 13.5px; font-weight: 600; flex: 1.6; min-width: 0; }
-  .ex-date { font-size: 12.5px; color: var(--text-secondary); flex: 1; }
-  .ex-place { font-size: 12.5px; color: var(--text-secondary); flex: 0.9; }
-  .ex-row .tag { flex: 0 0 auto; }
+  .ex-line1 { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
+  .ex-line2 { display: flex; align-items: center; gap: 10px; }
+  .ex-name { font-size: 13.5px; font-weight: 600; min-width: 0; }
+  .ex-meta { font-size: 12.5px; color: var(--text-secondary); white-space: nowrap; }
+  .ex-right { margin-left: auto; flex: 0 0 auto; }
   @media (max-width: 600px) {
-    .ex-row { flex-wrap: wrap; }
-    .ex-name { flex: 1 1 100%; }
-    .ex-date, .ex-place { font-size: 12px; }
+    .ex-meta { font-size: 12px; white-space: normal; }
   }
 
   .collapse-toggle { font-size: 12.5px; color: var(--text-tertiary); cursor: pointer; padding: 8px 8px 2px; user-select: none; }
@@ -172,7 +182,12 @@
   .file-card .arrow { margin-left: auto; color: var(--text-tertiary); }
   .empty-note { font-size: 12.5px; color: var(--text-tertiary); }
 
-  .nature-badge { font-size: 10.5px; color: var(--text-tertiary); background: var(--surface); padding: 2px 8px; border-radius: 6px; margin-left: 8px; font-weight: 500; }
+  /* 國內／國外同為青石藍色系，差別在實心與空心。
+     刻意不用四個語意色（藍＝進行中、琥珀＝待決、綠＝完成、灰＝不適用），
+     否則會跟狀態搶意思。青石藍 #506D85 是品牌手冊第三色，沒被語意佔用。 */
+  .nature-badge { font-size: 10.5px; padding: 2px 8px; border-radius: 6px; font-weight: 500; flex: 0 0 auto; }
+  .nb-dom { color: #3F5A6E; background: #E7ECF0; }
+  .nb-int { color: var(--brand-slate); background: var(--card); border: 1px solid var(--brand-slate); padding: 1px 7px; }
 
   .detail-tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
   .detail-tab { font-size: 13px; font-weight: 500; padding: 9px 14px; cursor: pointer; color: var(--text-tertiary); border-bottom: 2px solid transparent; margin-bottom: -1px; }
@@ -180,16 +195,18 @@
   .tab-panel.hidden { display: none; }
 
   .stage-set { display: flex; gap: 4px; flex: 0 0 auto; }
-  .stage { font-size: 11px; padding: 2px 7px; border-radius: 99px; white-space: nowrap; }
-  .stage-on  { background: var(--green-soft); color: var(--label); }
-  .stage-off { background: var(--gray-soft);  color: var(--label); }
-  .ex-booth { font-size: 12px; color: var(--text-secondary); flex: 0 0 auto; background: var(--surface); padding: 2px 8px; border-radius: 6px; }
-  .ex-count { font-size: 12px; font-weight: 600; flex: 0 0 auto; min-width: 58px; text-align: right; }
+  .stage { font-size: 11px; border-radius: 99px; white-space: nowrap; }
+  /* 已完成與未完成差三件事：填滿／空心、綠字／灰字、無框／虛線框。
+     不只靠色相，轉成黑白也分得出來。 */
+  .stage-on  { background: var(--green-soft); color: #2B6A4C; font-weight: 500; padding: 2px 7px; }
+  .stage-off { background: var(--card); color: var(--text-tertiary); padding: 1px 7px; border: 1px dashed #C9C3B8; }
+  .ex-booth { font-size: 11.5px; color: var(--label); flex: 0 0 auto; background: var(--surface); padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
+  .ex-count { font-size: 12px; font-weight: 600; flex: 0 0 auto; min-width: 76px; text-align: right; }
   .cnt-soon { color: var(--blue-text); }
   .cnt-now  { color: var(--green-text); }
   .cnt-past { color: var(--text-tertiary); font-weight: 500; }
   @media (max-width: 600px) {
-    .ex-count { text-align: left; min-width: 0; }
+    .ex-count { min-width: 0; }
   }
 
   /* ===== 殼新增：儲存回饋、尚未建置 ===== */
@@ -631,14 +648,11 @@ function normalize(f, id) {
   return o;
 }
 
+// 已結案＝已完成（綠），暫不參加＝不適用（灰）。
+// 兩者原本都是灰，意思完全相反卻長得一樣。左側色槓與詳情頁的狀態標籤都讀這張表。
 const STATUS_COLOR = {
-  '確定參加': 'blue', '評估中': 'amber', '已結案': 'gray', '暫不參加': 'gray'
+  '確定參加': 'blue', '評估中': 'amber', '已結案': 'green', '暫不參加': 'gray'
 };
-
-function statusTag(status) {
-  const color = STATUS_COLOR[status] || 'gray';
-  return `<span class="tag tag-${color}">${status || '-'}</span>`;
-}
 
 function fmtMoney(v) {
   if (v === '' || v === undefined || v === null) return '-';
@@ -672,7 +686,7 @@ function stageSetHtml(ex) {
     const on = ex[STAGE_FIELDS[en]] === '是';
     return `<span class="stage ${on ? 'stage-on' : 'stage-off'}">${stageLabel(en, ex)}</span>`;
   };
-  return `<span class="stage-set">${Object.keys(STAGE_FIELDS).map(pill).join('')}</span>`;
+  return `<span class="stage-set ex-right">${Object.keys(STAGE_FIELDS).map(pill).join('')}</span>`;
 }
 
 function shortDate(d) {
@@ -707,19 +721,31 @@ function byStartDate(a, b) {
   return da - db;
 }
 
+// 狀態不在這裡顯示。它已經由分組標題（「確定參加（4）」）與左側色槓表達了兩次，
+// 再掛一顆標籤是第三次——同一組四列的字一模一樣，掃過去零資訊量。
 function exRowHtml(ex) {
   const idx = exhibitions.indexOf(ex);
   const color = STATUS_COLOR[ex['參展狀態']] || 'gray';
   const di = daysInfo(ex);
+  const scope = ex['展覽類型'];
+  const badge = scope
+    ? `<span class="nature-badge ${scope === '國內' ? 'nb-dom' : 'nb-int'}">${scope}</span>`
+    : '';
+  // 攤位號緊貼倒數左邊。倒數有 76px 最小寬度並靠右，所以攤位號各列對齊。
+  // 「攤位」二字不寫——M2501、H42+H46 這種格式不會被誤認成別的東西。
+  const booth = ex['BoothNo'] ? `<span class="ex-booth ex-right">${ex['BoothNo']}</span>` : '';
   return `
     <div class="ex-row c-${color}" onclick="showDetail(${idx})">
-      <span class="ex-name">${ex['展覽名稱'] || ''}${ex['展覽類型'] ? `<span class="nature-badge">${ex['展覽類型']}</span>` : ''}</span>
-      ${stageSetHtml(ex)}
-      <span class="ex-date">${shortDate(ex['展期開始'])} - ${shortDate(ex['展期結束'])}</span>
-      ${ex['BoothNo'] ? `<span class="ex-booth">${ex['BoothNo']}</span>` : ''}
-      <span class="ex-place">${ex['地點城市'] || ''}</span>
-      <span class="ex-count ${di.cls}">${di.text}</span>
-      ${statusTag(ex['參展狀態'])}
+      <div class="ex-line1">
+        ${badge}
+        <span class="ex-name">${ex['展覽名稱'] || ''}</span>
+        ${booth}
+        <span class="ex-count ${di.cls}"${booth ? '' : ' style="margin-left:auto;"'}>${di.text}</span>
+      </div>
+      <div class="ex-line2">
+        <span class="ex-meta">${shortDate(ex['展期開始'])} - ${shortDate(ex['展期結束'])}${ex['地點城市'] ? '　·　' + ex['地點城市'] : ''}</span>
+        ${stageSetHtml(ex)}
+      </div>
     </div>`;
 }
 
