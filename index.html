@@ -641,7 +641,7 @@ function statusTag(status) {
 }
 
 function fmtMoney(v) {
-  if (!v) return '-';
+  if (v === '' || v === undefined || v === null) return '-';
   const n = Number(v);
   if (isNaN(n)) return v;
   return 'NT$ ' + n.toLocaleString();
@@ -854,11 +854,18 @@ function showDetail(idx) {
   document.getElementById('d-scope').textContent = ex['展覽類型'] || '-';
   document.getElementById('d-salesperson').textContent = ex['業務參展人'] || '-';
 
-  const fees = ['攤位費用', '運費', '裝置費用'].map(k => Number(ex[k]) || (ex[k] ? NaN : null));
+  // 空白與 0 是兩件事：空白代表由別的單位付或還沒確定，0 代表真的不用錢。
+  const feeVal = k => {
+    const raw = ex[k];
+    if (raw === '' || raw === undefined || raw === null) return null;
+    const n = Number(raw);
+    return isNaN(n) ? null : n;
+  };
+  const fees = ['攤位費用', '運費', '裝置費用'].map(feeVal);
   document.getElementById('d-fee-booth').textContent = fmtMoney(ex['攤位費用']);
   document.getElementById('d-fee-freight').textContent = fmtMoney(ex['運費']);
   document.getElementById('d-fee-setup').textContent = fmtMoney(ex['裝置費用']);
-  const filled = fees.filter(v => v !== null && !isNaN(v));
+  const filled = fees.filter(v => v !== null);
   const blanks = 3 - filled.length;
   document.getElementById('d-fee-total').innerHTML = filled.length
     ? fmtMoney(filled.reduce((a, b) => a + b, 0))
@@ -939,7 +946,7 @@ function showError(msg) {
   loading.innerHTML = '載入失敗：' + msg
     + '<br><button class="back-btn" style="margin-top:12px;" onclick="location.reload()">重新載入</button>'
     + '<br><span class="empty-note" style="display:inline-block; margin-top:8px;">'
-    + '上一版仍可使用：<a href="./archive/sp.html">archive/sp.html</a></span>';
+    + '若一直失敗，把這個畫面截圖下來，錯誤訊息就在上面那一行。</span>';
 }
 
 function showSignIn() {
