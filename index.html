@@ -209,6 +209,20 @@
     .ex-count { min-width: 0; }
   }
 
+  .doc-row {
+    display: flex; align-items: center; gap: 10px; padding: 7px 10px;
+    border-bottom: 1px solid var(--border); text-decoration: none;
+    font-variant-numeric: tabular-nums;
+  }
+  .doc-row:last-child { border-bottom: none; }
+  .doc-row:hover { background: var(--bg); }
+  .doc-name { font-size: 12.5px; color: var(--ink); min-width: 0; word-break: break-all; }
+  .doc-meta { font-size: 11.5px; color: var(--text-tertiary); margin-left: auto; flex: 0 0 auto; white-space: nowrap; }
+  @media (max-width: 600px) {
+    .doc-row { flex-wrap: wrap; gap: 2px; }
+    .doc-meta { margin-left: 0; flex: 1 1 100%; }
+  }
+
   /* ===== 殼新增：儲存回饋、尚未建置 ===== */
   #toast {
     position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 12px);
@@ -378,13 +392,16 @@
 
           <div class="tab-panel hidden" id="tab-files">
             <p class="section-title" style="margin-top:0;">設計產出</p>
-            <div id="d-design" style="margin-bottom:16px;"></div>
+            <div id="d-design"></div>
+            <div id="d-design-files" style="margin-bottom:18px;"></div>
             <p class="section-title">現場照片</p>
-            <div id="d-photos" style="margin-bottom:16px;"></div>
+            <div id="d-photos"></div>
+            <div id="d-photo-files" style="margin-bottom:18px;"></div>
             <p class="section-title">結案報告</p>
             <div id="d-report"></div>
+            <div id="d-report-files"></div>
             <div id="d-closing" style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; align-items:center;"></div>
-            <p class="empty-note" style="margin:18px 0 0;">連結直接指向文件庫的資料夾，資料夾一定存在；裡面有沒有檔案要點進去看。</p>
+            <p class="empty-note" style="margin:18px 0 0;">檔案直接上傳到文件庫。在資料夾按「新增 OneDrive 捷徑」，之後從檔案總管拖進去就好。</p>
           </div>
         </div>
       </div>
@@ -547,6 +564,54 @@ async function spCreate(key, fields) {
 // 軟刪除：各模組共用同一個欄位名稱
 async function spSoftDelete(key, itemId) {
   return spPatch(key, itemId, { IsDeleted: true });
+}
+
+// ===== 文件庫（唯讀就夠，不需要等寫入權限）=====
+// 已在正式網址上用網頁自己的 Sites.Read.All 權杖實測三種情況：
+//   有內容 → 200 帶陣列 ／ 空資料夾 → 200 零筆 ／ 路徑不存在 → 404
+// 三種都要分開處理，因為「空的」與「找不到」對使用者的意思完全不同。
+function drivePath(segments) {
+  return segments.map(encodeURIComponent).join('/');
+}
+
+const folderCache = {};   // 路徑 → { state, items }
+
+async function driveList(segments) {
+  const path = segments.join('/');
+  if (folderCache[path]) return folderCache[path];
+  const token = await getToken();
+  const url = 'https://graph.microsoft.com/v1.0/sites/' + GRAPH_SITE_ID
+            + '/drive/root:/' + drivePath(segments)
+            + ':/children?$select=name,size,lastModifiedDateTime,webUrl,folder,file&$orderby=name';
+  let result;
+  try {
+    const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+    if (res.status === 404)      result = { state: 'missing', items: [] };
+    else if (!res.ok)            result = { state: 'error', items: [], code: res.status };
+    else {
+      const items = (await res.json()).value.filter(x => !x.folder);
+      result = { state: items.length ? 'ok' : 'empty', items };
+    }
+  } catch (e) {
+    result = { state: 'error', items: [], code: e.message };
+  }
+  folderCache[path] = result;
+  return result;
+}
+
+function fmtSize(b) {
+  if (!b) return '';
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return Math.round(b / 1024) + ' KB';
+  return (b / 1048576).toFixed(1) + ' MB';
+}
+
+function fmtStamp(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '/' + p(d.getMonth() + 1) + '/' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
 }
 
 let toastTimer = null;
@@ -713,6 +778,40 @@ function folderCard(ex, key, label, icon) {
   </a>`;
 }
 
+// 檔案清單。用途是存查與抓取，所以每一筆都能直接點開，並顯示上傳時間與大小。
+// 刻意不從檔名推斷內容——訂命名規則讓程式比對，人一沒照規則就會靜默判斷錯。
+async function renderFolderFiles(ex, key, elId) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (!ex['資料夾代號'] || !ex['年度']) { el.innerHTML = ''; return; }
+  el.innerHTML = `<p class="empty-note">讀取中…</p>`;
+  const r = await driveList(['展覽', ex['年度'], ex['資料夾代號'], EX_SUBFOLDERS[key]]);
+  if (r.state === 'missing') {
+    el.innerHTML = `<p class="empty-note">找不到這個資料夾。可能是資料夾代號與文件庫上的名稱不一致。</p>`;
+    return;
+  }
+  if (r.state === 'error') {
+    el.innerHTML = `<p class="empty-note">讀取失敗（${r.code}）。</p>`;
+    return;
+  }
+  if (r.state === 'empty') {
+    el.innerHTML = `<p class="empty-note">資料夾是空的，還沒有檔案。</p>`;
+    return;
+  }
+  el.innerHTML = `<p class="empty-note" style="margin:0 0 6px;">共 ${r.items.length} 個檔案</p>`
+    + r.items.map(f => `<a class="doc-row" href="${f.webUrl}" target="_blank" rel="noopener">
+        <span class="doc-name">${f.name}</span>
+        <span class="doc-meta">${fmtStamp(f.lastModifiedDateTime)}　${fmtSize(f.size)}</span>
+      </a>`).join('');
+}
+
+function renderAllFolders(idx) {
+  const ex = exhibitions[idx];
+  renderFolderFiles(ex, 'design', 'd-design-files');
+  renderFolderFiles(ex, 'photo',  'd-photo-files');
+  renderFolderFiles(ex, 'report', 'd-report-files');
+}
+
 function byStartDate(a, b) {
   const da = parseDate(a['展期開始']), db = parseDate(b['展期開始']);
   if (!da && !db) return 0;
@@ -869,6 +968,9 @@ async function toggleStage(idx, en) {
 
 function showDetail(idx) {
   const ex = exhibitions[idx];
+  // 每次開啟都清掉資料夾快取重讀。你剛在 SharePoint 丟完檔案回來這一頁，
+  // 最重要的就是看到它已經在裡面——三個請求的成本遠低於顯示過期內容。
+  for (const k in folderCache) delete folderCache[k];
   switchTab('basic');
   renderStages(idx);
   document.getElementById('d-name').textContent = ex['展覽名稱'] || '';
@@ -908,6 +1010,7 @@ function showDetail(idx) {
   document.getElementById('d-photos').innerHTML = folderCard(ex, 'photo', '02_現場照片', '📁');
   document.getElementById('d-report').innerHTML = folderCard(ex, 'report', '03_結案報告', '📁');
   renderClosing(idx);
+  renderAllFolders(idx);
 
   document.getElementById('view-main').classList.add('hidden');
   document.getElementById('view-detail').classList.remove('hidden');
