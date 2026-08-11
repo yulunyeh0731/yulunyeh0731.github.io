@@ -270,7 +270,7 @@
         <div id="dash-alerts" style="font-size:13px; line-height:1.9;"></div>
       </div>
       <div class="card">
-        <p class="section-title">展覽</p>
+        <p class="section-title" id="dash-ex-label">展覽</p>
         <div class="stats-grid stats-3">
           <div class="stat-box stat-confirmed"><p>確定參加</p><p id="dash-ex-confirmed">-</p></div>
           <div class="stat-box stat-evaluating"><p>評估中</p><p id="dash-ex-evaluating">-</p></div>
@@ -334,8 +334,7 @@
             <p class="section-title" style="margin-top:0;">前置階段</p>
             <div id="d-stages" style="display:flex; gap:6px; margin-bottom:18px; flex-wrap:wrap;"></div>
             <div class="detail-row" style="margin-bottom:16px;">
-              <div><span>參展性質</span><span id="d-nature"></span></div>
-              <div><span>執行單位</span><span id="d-unit"></span></div>
+              <div><span>展覽類型</span><span id="d-scope"></span></div>
               <div><span>業務參展人</span><span id="d-salesperson"></span></div>
             </div>
             <p class="section-title">備註說明</p>
@@ -343,21 +342,32 @@
           </div>
 
           <div class="tab-panel hidden" id="tab-budget">
+            <p class="section-title" style="margin-top:0;">費用</p>
+            <div class="detail-row" style="margin-bottom:6px;">
+              <div><span>攤位費用</span><span id="d-fee-booth"></span></div>
+              <div><span>運費</span><span id="d-fee-freight"></span></div>
+              <div><span>裝置費用</span><span id="d-fee-setup"></span></div>
+              <div><span>合計</span><span id="d-fee-total"></span></div>
+            </div>
+            <p class="empty-note" style="margin:0 0 18px;">空白不等於 0，代表由別的單位支付或還沒確定，不計入合計。</p>
+            <p class="section-title">補助</p>
             <div class="detail-row">
-              <div><span>預算費用</span><span id="d-budget"></span></div>
-              <div><span>補助申請金額</span><span id="d-subsidy-apply"></span></div>
-              <div><span>補助核准金額</span><span id="d-subsidy-approved"></span></div>
-              <div><span>補助核銷狀態</span><span id="d-subsidy-status"></span></div>
+              <div><span>補助單位</span><span id="d-subsidy-org"></span></div>
+              <div><span>核銷狀態</span><span id="d-subsidy-status"></span></div>
+              <div><span>申請金額</span><span id="d-subsidy-apply"></span></div>
+              <div><span>核准金額</span><span id="d-subsidy-approved"></span></div>
             </div>
           </div>
 
           <div class="tab-panel hidden" id="tab-files">
-            <p class="section-title" style="margin-top:0;">現場照片</p>
+            <p class="section-title" style="margin-top:0;">設計產出</p>
+            <div id="d-design" style="margin-bottom:16px;"></div>
+            <p class="section-title">現場照片</p>
             <div id="d-photos" style="margin-bottom:16px;"></div>
-            <p class="section-title">宣傳素材</p>
-            <div id="d-promo" style="margin-bottom:16px;"></div>
-            <p class="section-title">結案報告　<span id="d-report-needed" style="font-weight:400; text-transform:none; letter-spacing:0; color:var(--text-tertiary);"></span></p>
+            <p class="section-title">結案報告</p>
             <div id="d-report"></div>
+            <div id="d-closing" style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; align-items:center;"></div>
+            <p class="empty-note" style="margin:18px 0 0;">連結直接指向文件庫的資料夾，資料夾一定存在；裡面有沒有檔案要點進去看。</p>
           </div>
         </div>
       </div>
@@ -397,7 +407,7 @@ const GRAPH_SITE_ID = 'texray.sharepoint.com,523489e7-e84e-4554-96f9-2a27018db21
 
 // 新模組建好清單後，把清單 ID 填進來即可，其他地方不用改
 const LISTS = {
-  exhibitions:  '044e6df5-fc21-4dfb-a539-21299d6ea20f',
+  exhibitions:  '01765d4f-5cb9-4a5b-b04f-a9be79f5960e',
   requests:     '',
   todos:        '',
   annual:       '',
@@ -408,6 +418,14 @@ const LISTS = {
   people:       ''
 };
 
+// 展覽檔案放在同一個網站的預設文件庫，路徑固定為
+//   Shared Documents/展覽/{年度}/{FolderKey}/{01_設計產出,02_現場照片,03_結案報告}
+// 所以連結是「算」出來的，清單裡不再存四個連結欄位。
+// 已於 2026-08-11 用 Graph 確認過實際路徑，不是推測。
+const LIB_ROOT = 'https://texray.sharepoint.com/sites/internal-tools/Shared%20Documents';
+const EX_FOLDER_ROOT = LIB_ROOT + '/' + encodeURIComponent('展覽');
+const EX_SUBFOLDERS = { design: '01_設計產出', photo: '02_現場照片', report: '03_結案報告' };
+
 // 先要可寫入的權限；若尚未經組織同意，自動退回唯讀，網頁仍可正常使用
 const SCOPE_RW = ['https://graph.microsoft.com/Sites.ReadWrite.All'];
 const SCOPE_RO = ['https://graph.microsoft.com/Sites.Read.All'];
@@ -417,7 +435,7 @@ const MODULES = {
   dashboard:   { title: '儀表板',     ready: true  },
   requests:    { title: '受理登記',   ready: false, desc: '總務與企劃共用一張清單，用「部門」欄位分。可以做的事：新增一筆、推進狀態、指派負責人、結案。' },
   todos:       { title: '待辦事項',   ready: false, desc: '指派、打勾完成、改期。三個視角：我的待辦、我派出的、部門檢視。' },
-  annual:      { title: '年度行事曆', ready: false, desc: '九項年度死線集中在一張清單。觸發器是日期，不是別人的郵件。' },
+  annual:      { title: '年度行事曆', ready: false, desc: '年度或半年一次、由外部死線驅動的工作。觸發器是日期，不是別人的郵件。內容還沒盤點過——建這張清單之前要先問出實際每年要交出去的東西有哪些。' },
   exhibitions: { title: '展覽',       ready: true  },
   projects:    { title: '專案管理',   ready: false, desc: '兩張清單：專案主體掛階段，工項各自有廠商、時程、驗收。樓層整修是第一個。' },
   external:    { title: '對外資料',   ready: false, desc: '一筆資料 × 一個出口 = 跟上了沒。到期提醒去催來源，出口欄位顯示哪裡還是舊版。' },
@@ -562,23 +580,31 @@ document.querySelectorAll('.nav-item').forEach(b => {
 /* ================================================================
    三、模組：展覽　—　繪製邏輯沿用 sp.html，未修改行為
    ================================================================ */
+// 左邊是 SharePoint 內部名稱（建立後改不掉），右邊只是這支程式內部用的鍵名。
+// 對照的是 2026-08-11 重建的 Exhibitions，26 欄。
 const FIELD_MAP = {
-  Title: '展覽名稱', Year: '年度', Status: '參展狀態',
+  Title: '展覽名稱', Year: '年度', Scope: '展覽類型', Status: '參展狀態',
   StartDate: '展期開始', EndDate: '展期結束',
   City: '地點城市', Country: '國家',
   BoothNo: 'BoothNo', BoothSize: 'BoothSize',
-  ExhibitionType: '參展性質', ExecutionUnit: '執行單位',
   SalesPerson: '業務參展人',
-  Budget: '預算費用', SubsidyApplied: '補助申請金額',
+  RegDone: '報名', PayDone: '繳費', BoothDone: '選位', PackDone: '備品打包',
+  BoothFee: '攤位費用', FreightFee: '運費', SetupFee: '裝置費用',
+  SubsidyOrg: '補助單位', SubsidyApplied: '補助申請金額',
   SubsidyApproved: '補助核准金額', SubsidyStatus: '補助核銷狀態',
-  NeedClosingReport: '是否需要結案簡報',
+  ClosingReportDone: '結案簡報完成',
   Remarks: '備註說明',
-  PhotoFolderUrl: '照片資料夾連結', BannerUrl: 'Banner連結',
-  InvitationUrl: '邀請函連結', ClosingReportUrl: '結案報告連結',
-  RegDone: '報名', PayDone: '繳費', BoothDone: '選位'
+  FolderKey: '資料夾代號', IsDeleted: '已刪除'
 };
-const BOOL_FIELDS = ['NeedClosingReport', 'RegDone', 'PayDone', 'BoothDone'];
-const STAGE_FIELDS = { RegDone: '報名', PayDone: '繳費', BoothDone: '選位' };
+const BOOL_FIELDS = ['RegDone', 'PayDone', 'BoothDone', 'PackDone', 'ClosingReportDone', 'IsDeleted'];
+
+// 前置階段四顆。第四顆的字面依「展覽類型」而變：
+// 國內＝自己布展，國外＝要出貨。同一個 PackDone 欄位，兩種說法。
+const STAGE_FIELDS = { RegDone: '報名', PayDone: '繳費', BoothDone: '選位', PackDone: '備品打包' };
+function stageLabel(en, ex) {
+  if (en !== 'PackDone') return STAGE_FIELDS[en];
+  return ex['展覽類型'] === '國內' ? '布展' : '運輸';
+}
 
 let exhibitions = [];
 let currentYear = null;
@@ -642,8 +668,11 @@ function daysInfo(ex) {
 function stageSetHtml(ex) {
   const st = ex['參展狀態'];
   if (st !== '確定參加' && st !== '評估中') return '';
-  const pill = k => `<span class="stage ${ex[k] === '是' ? 'stage-on' : 'stage-off'}">${k}</span>`;
-  return `<span class="stage-set">${pill('報名')}${pill('繳費')}${pill('選位')}</span>`;
+  const pill = en => {
+    const on = ex[STAGE_FIELDS[en]] === '是';
+    return `<span class="stage ${on ? 'stage-on' : 'stage-off'}">${stageLabel(en, ex)}</span>`;
+  };
+  return `<span class="stage-set">${Object.keys(STAGE_FIELDS).map(pill).join('')}</span>`;
 }
 
 function shortDate(d) {
@@ -652,10 +681,21 @@ function shortDate(d) {
   return parts.length === 3 ? `${parts[1]}/${parts[2]}` : d;
 }
 
-function fileCard(label, url, icon) {
-  if (!url) return '';
+// 資料夾一定存在（建清單時一次建好），所以連結是算出來的，不是存出來的。
+// 裡面有沒有檔案這支程式看不到——那要另外去讀文件庫，是下一階段的事。
+function folderUrl(ex, key) {
+  const y = ex['年度'], k = ex['資料夾代號'];
+  if (!y || !k) return '';
+  return EX_FOLDER_ROOT + '/' + encodeURIComponent(y)
+    + '/' + encodeURIComponent(k)
+    + '/' + encodeURIComponent(EX_SUBFOLDERS[key]);
+}
+
+function folderCard(ex, key, label, icon) {
+  const url = folderUrl(ex, key);
+  if (!url) return `<p class="empty-note">這一場還沒填資料夾代號，無法組出連結。</p>`;
   return `<a class="file-card" href="${url}" target="_blank" rel="noopener">
-    <span>${icon}</span><span>${label}</span><span class="arrow">↓</span>
+    <span>${icon}</span><span>${label}</span><span class="arrow">↗</span>
   </a>`;
 }
 
@@ -673,7 +713,7 @@ function exRowHtml(ex) {
   const di = daysInfo(ex);
   return `
     <div class="ex-row c-${color}" onclick="showDetail(${idx})">
-      <span class="ex-name">${ex['展覽名稱'] || ''}${ex['參展性質'] ? `<span class="nature-badge">${ex['參展性質']}</span>` : ''}</span>
+      <span class="ex-name">${ex['展覽名稱'] || ''}${ex['展覽類型'] ? `<span class="nature-badge">${ex['展覽類型']}</span>` : ''}</span>
       ${stageSetHtml(ex)}
       <span class="ex-date">${shortDate(ex['展期開始'])} - ${shortDate(ex['展期結束'])}</span>
       ${ex['BoothNo'] ? `<span class="ex-booth">${ex['BoothNo']}</span>` : ''}
@@ -766,26 +806,38 @@ function switchTab(name) {
 function renderStages(idx) {
   const ex = exhibitions[idx];
   const html = Object.keys(STAGE_FIELDS).map(en => {
-    const zh = STAGE_FIELDS[en];
-    const on = ex[zh] === '是';
+    const on = ex[STAGE_FIELDS[en]] === '是';
     return `<span class="stage ${on ? 'stage-on' : 'stage-off'}"
       style="font-size:12.5px; padding:6px 12px; cursor:${canWrite ? 'pointer' : 'default'};"
-      onclick="toggleStage(${idx}, '${en}')">${zh}</span>`;
+      onclick="toggleStage(${idx}, '${en}')">${stageLabel(en, ex)}</span>`;
   }).join('');
   document.getElementById('d-stages').innerHTML = html
     + (canWrite ? '' : '<span class="empty-note" style="align-self:center; margin-left:6px;">（唯讀模式，權限核准後可直接點按）</span>');
 }
 
+// 結案簡報是展後的事，不放在前置階段那一排。同樣是規則 1，點了就存。
+function renderClosing(idx) {
+  const ex = exhibitions[idx];
+  const on = ex['結案簡報完成'] === '是';
+  document.getElementById('d-closing').innerHTML =
+    `<span class="stage ${on ? 'stage-on' : 'stage-off'}"
+       style="font-size:12.5px; padding:6px 12px; cursor:${canWrite ? 'pointer' : 'default'};"
+       onclick="toggleStage(${idx}, 'ClosingReportDone')">結案簡報${on ? '已完成' : '未完成'}</span>`
+    + (canWrite ? '' : '<span class="empty-note">（唯讀模式）</span>');
+}
+
 async function toggleStage(idx, en) {
   if (!canWrite) { toast('目前是唯讀模式，寫入權限尚未核准', true); return; }
   const ex = exhibitions[idx];
-  const zh = STAGE_FIELDS[en];
+  const zh = FIELD_MAP[en];
   const next = ex[zh] !== '是';
   try {
     await spPatch('exhibitions', ex._id, { [en]: next });
     ex[zh] = next ? '是' : '否';
     renderStages(idx);
+    renderClosing(idx);
     renderYearView();
+    renderDashboard();
   } catch (e) { console.error(e); }
 }
 
@@ -799,25 +851,30 @@ function showDetail(idx) {
   document.getElementById('d-place').textContent = `${ex['地點城市'] || ''}`;
   document.getElementById('d-booth').textContent = ex['BoothNo'] || '未提供';
   document.getElementById('d-boothsize').textContent = ex['BoothSize'] || '-';
-  document.getElementById('d-nature').textContent = ex['參展性質'] || '-';
-  document.getElementById('d-unit').textContent = ex['執行單位'] || '-';
+  document.getElementById('d-scope').textContent = ex['展覽類型'] || '-';
   document.getElementById('d-salesperson').textContent = ex['業務參展人'] || '-';
-  document.getElementById('d-budget').textContent = fmtMoney(ex['預算費用']);
+
+  const fees = ['攤位費用', '運費', '裝置費用'].map(k => Number(ex[k]) || (ex[k] ? NaN : null));
+  document.getElementById('d-fee-booth').textContent = fmtMoney(ex['攤位費用']);
+  document.getElementById('d-fee-freight').textContent = fmtMoney(ex['運費']);
+  document.getElementById('d-fee-setup').textContent = fmtMoney(ex['裝置費用']);
+  const filled = fees.filter(v => v !== null && !isNaN(v));
+  const blanks = 3 - filled.length;
+  document.getElementById('d-fee-total').innerHTML = filled.length
+    ? fmtMoney(filled.reduce((a, b) => a + b, 0))
+      + (blanks ? ` <span class="empty-note">（${blanks} 欄空白）</span>` : '')
+    : '-';
+
+  document.getElementById('d-subsidy-org').textContent = ex['補助單位'] || '（無補助）';
+  document.getElementById('d-subsidy-status').textContent = ex['補助核銷狀態'] || '-';
   document.getElementById('d-subsidy-apply').textContent = fmtMoney(ex['補助申請金額']);
   document.getElementById('d-subsidy-approved').textContent = fmtMoney(ex['補助核准金額']);
-  document.getElementById('d-subsidy-status').textContent = ex['補助核銷狀態'] || '-';
-  document.getElementById('d-report-needed').textContent = ex['是否需要結案簡報'] === '是' ? '（需要結案簡報）' : '';
   document.getElementById('d-note').textContent = ex['備註說明'] || '（無）';
 
-  document.getElementById('d-photos').innerHTML = ex['照片資料夾連結']
-    ? fileCard('查看現場照片資料夾', ex['照片資料夾連結'], '📁')
-    : `<p class="empty-note">尚無照片。可在 SharePoint 文件庫上傳後，於清單補上資料夾連結。</p>`;
-
-  const promoHtml = fileCard('Email Banner', ex['Banner連結'], '🖼️') + fileCard('邀請函', ex['邀請函連結'], '✉️');
-  document.getElementById('d-promo').innerHTML = promoHtml || `<p class="empty-note">尚無宣傳素材。</p>`;
-
-  const reportHtml = fileCard(`${ex['展覽名稱'] || ''} 結案簡報`, ex['結案報告連結'], '📊');
-  document.getElementById('d-report').innerHTML = reportHtml || `<p class="empty-note">尚無結案報告，展覽結束後可補上連結。</p>`;
+  document.getElementById('d-design').innerHTML = folderCard(ex, 'design', '01_設計產出', '📁');
+  document.getElementById('d-photos').innerHTML = folderCard(ex, 'photo', '02_現場照片', '📁');
+  document.getElementById('d-report').innerHTML = folderCard(ex, 'report', '03_結案報告', '📁');
+  renderClosing(idx);
 
   document.getElementById('view-main').classList.add('hidden');
   document.getElementById('view-detail').classList.remove('hidden');
@@ -832,8 +889,18 @@ function showMain() {
 /* ================================================================
    四、模組：儀表板　—　彙總各清單。目前只有展覽，其他模組建好後接進來
    ================================================================ */
+// 儀表板看的是「今年」，跟展覽模組的年度分頁無關。
+// 舊版共用 currentYear，結果在展覽點了 2025，回儀表板數字也跟著變成 2025。
+function dashboardYear() {
+  const years = [...new Set(exhibitions.map(e => e['年度']).filter(Boolean))].sort();
+  const thisYear = String(new Date().getFullYear());
+  return years.includes(thisYear) ? thisYear : (years[years.length - 1] || null);
+}
+
 function renderDashboard() {
-  const list = exhibitions.filter(e => e['年度'] === currentYear);
+  const year = dashboardYear();
+  const list = exhibitions.filter(e => e['年度'] === year);
+  document.getElementById('dash-ex-label').textContent = year ? `展覽　·　${year} 年度` : '展覽';
   document.getElementById('dash-ex-confirmed').textContent = list.filter(e => e['參展狀態'] === '確定參加').length;
   document.getElementById('dash-ex-evaluating').textContent = list.filter(e => e['參展狀態'] === '評估中').length;
   document.getElementById('dash-ex-done').textContent = list.filter(e => e['參展狀態'] === '已結案').length;
@@ -847,7 +914,7 @@ function renderDashboard() {
       + (n['地點城市'] ? `　·　${n['地點城市']}` : ''));
   }
   const notReady = list.filter(e => e['參展狀態'] === '確定參加')
-    .filter(e => e['報名'] !== '是' || e['繳費'] !== '是' || e['選位'] !== '是');
+    .filter(e => Object.values(STAGE_FIELDS).some(zh => e[zh] !== '是'));
   if (notReady.length) {
     alerts.push(`前置階段未完成　<strong>${notReady.length}</strong> 場　·　`
       + notReady.slice(0, 3).map(e => e['展覽名稱']).join('、')
@@ -909,7 +976,9 @@ async function loadData() {
 
     loading.textContent = '資料載入中…';
     const raw = await spGet('exhibitions');
-    exhibitions = raw.map(it => normalize(it.fields || {}, it.id)).filter(e => e['展覽名稱']);
+    // 軟刪除：骨幹規劃五之二第 4 條，各模組一律過濾掉 IsDeleted
+    exhibitions = raw.map(it => normalize(it.fields || {}, it.id))
+      .filter(e => e['展覽名稱'] && e['已刪除'] !== '是');
 
     loading.classList.add('hidden');
     document.getElementById('updated-label').textContent =
