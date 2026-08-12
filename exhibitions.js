@@ -303,6 +303,12 @@ function renderYearTabs() {
     return `<button class="year-tab ${y === currentYear ? 'active' : ''}" ${hasData ? `onclick="selectYear('${y}')"` : 'disabled'}>${y}${hasData ? '' : '（尚無資料）'}</button>`;
   }).join('');
   renderYearView();
+  // 顯示清單的責任放在這裡，兩頁才會一致。
+  // 工作台原本靠 go('exhibitions') 呼叫 showMain()，公開頁沒有 go()，
+  // 拆檔時這個責任就掉在兩者之間，結果公開頁只出現年度分頁、清單是隱藏的。
+  // 刻意不放在 renderYearView()——toggleStage 在詳情頁裡也會呼叫它，
+  // 那會把人踢回列表。renderYearTabs() 只在載入時跑一次，放這裡才安全。
+  showMain();
 }
 
 function selectYear(y) {
