@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>展覽資訊｜TEX-RAY</title>
+<link rel="stylesheet" href="../app.css">
+<style>
+  /* 這一頁沒有側邊選單，主區直接佔滿 */
+  .shell { display: block; }
+  main { margin-left: 0; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.39.0/lib/msal-browser.min.js"></script>
+<script>window.addEventListener('error',function(e){if(e.target&&e.target.tagName==='SCRIPT'){var l=document.getElementById('loading');if(l)l.textContent='\u767b\u5165\u51fd\u5f0f\u5eab\u8f09\u5165\u5931\u6557\uff0c\u8acb\u78ba\u8a8d\u7db2\u8def\u662f\u5426\u80fd\u5b58\u53d6 cdn.jsdelivr.net';}},true);</script>
+</head>
+<body>
+
+<div class="shell">
+  <main>
+  <div class="wrap">
+
+    <header>
+      <h1 id="page-title">展覽資訊</h1>
+      <div class="head-meta">
+        <span id="updated-label"></span>
+      </div>
+    </header>
+
+    <div id="loading" class="loading">啟動中…</div>
+
+    <div id="signin" class="card hidden" style="text-align:center; padding:2.5rem 1.25rem;">
+      <p style="font-size:16px; font-weight:600; margin:0 0 4px;">展覽資訊</p>
+      <p style="font-size:12px; color:var(--text-tertiary); margin:0 0 22px;">TEX-RAY 南緯實業</p>
+      <button onclick="signIn()" style="font-family:inherit; font-size:14px; font-weight:600;
+        background:var(--text); color:#fff; border:0; border-radius:10px; padding:11px 26px; cursor:pointer;">
+        使用公司帳號登入
+      </button>
+      <p id="signin-hint" class="empty-note" style="margin:18px 0 0; line-height:1.8;"></p>
+    </div>
+
+    <!-- 版面由 exhibitions.js 掛載，跟工作台共用同一份 -->
+    <div id="mod-exhibitions" class="module hidden"></div>
+
+  </div>
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<!-- 這一頁的網址跟根目錄不同，Entra 對重新導向 URI 是完全比對，所以要各自宣告並各自註冊 -->
+<script>const REDIRECT_URI = 'https://yulunyeh0731.github.io/exhibitions/';</script>
+<script src="../core.js"></script>
+<script src="../exhibitions.js"></script>
+<script>
+// 這一頁沒有選單也沒有儀表板，資料讀完就直接顯示展覽。
+// 「唯讀」標籤刻意不放：這一頁的讀者本來就只有讀取權，講了只會讓人困惑。
+function onDataLoaded() {
+  const el = document.getElementById('mod-exhibitions');
+  mountExhibitions(el);
+  el.classList.remove('hidden');
+  renderYearTabs();
+}
+
+boot();
+</script>
+</body>
+</html>
