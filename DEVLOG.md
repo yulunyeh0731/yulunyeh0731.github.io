@@ -962,3 +962,66 @@ SharePoint。現在不需要角色偵測、不需要名單、不需要 AppRoles 
 - [ ] 請那位業務同事實測公開頁。**清單層級權限能不能透過 Graph 讀到，我沒實測過**，
       不通就只能退回全站唯讀
 - [ ] 通了再擴大到「外部使用者以外的所有人」
+
+## 2026-08-12（第二次）　修 state_not_found：按登入沒反應
+
+### 症狀
+
+她自己測的時候，兩頁都是「按了登入完全沒反應」——連「正在前往 Microsoft 登入頁…」
+那行提示都沒出現。
+
+### 診斷過程（重要：一開始查不到，因為我自己是已登入狀態）
+
+我的瀏覽器工作階段一直有登入紀錄，所以永遠走靜默登入那條路，
+**測不到「從未登入狀態按登入」這條路徑**。把 `sessionStorage` 清掉之後一次就重現。
+
+重現後在頁面上直接查，拿到決定性的證據：
+`sessionStorage` 裡只剩一個 `server-telemetry-{clientId}`，內容是
+
+```
+{"failedRequests":[865,"...",865,"..."],"errors":["state_not_found","state_not_found"],"cacheHits":0}
+```
+
+她的 console 也印出同一件事：`handleRedirectPromise: state_not_found: State not found: Cached State`。
+
+### 原因
+
+MSAL 在跳去 Microsoft 之前，會把核對值（state）存進 `sessionStorage`，
+跳回來要用它比對回應是不是自己發出去的。**某些情況下那筆值在跳轉過程中會被丟掉**，
+回來就是 `state_not_found`。
+
+而舊程式在這裡**只把錯誤 `console.warn` 出來、把訊息塞進提示，沒有清掉殘留**。
+殘留會讓 MSAL 在後續每次 `loginRedirect()` 都丟 `interaction_in_progress` 並自己攔下來——
+**畫面上完全沒反應，使用者只會以為按鈕壞了。** 這就是症狀的來源。
+
+**這不是拆檔造成的。** `REDIRECT_URI`、`msalApp` 設定、`signIn` 函式我全部驗過都正確，
+直接呼叫 `loginRedirect()` 也確實跳去 Microsoft 又跳回來。
+DEVLOG 8/4、8/5 連三則都在處理登入跳轉——這是舊傷。
+
+### 三處修正（只動 `core.js`）
+
+1. **`storeAuthStateInCookie: true`**。核對值額外存一份到 cookie，撐過跳轉。
+   這是這個錯誤的正規解法。**權杖本身仍然只在 `sessionStorage`**，
+   關掉分頁就消失，不會留在那台電腦上。
+2. **新增 `clearMsalState()`**：只清 MSAL 自己的鍵（`msal*`、`server-telemetry*`、
+   含 clientId 的）與核對值 cookie，不碰別的東西。
+3. **自動復原**：
+   - `boot()` 遇到 `handleRedirectPromise` 失敗 → 清殘留、重載一次。
+     **重試記號用 `localStorage`（`wb-login-retry`），因為 `clearMsalState()`
+     會清 `sessionStorage`，記號放那裡會被自己清掉，變成無限重載。**
+   - `signIn()` 遇到 `interaction_in_progress` 或 `state_not_found`
+     → 清殘留、自動再試一次。
+   - 兩者都失敗才顯示訊息，而且要告訴使用者能怎麼做（把分頁全部關掉再開），
+     不是丟一串英文錯誤。
+
+### 為什麼一定要自動復原，不能靠說明
+
+**業務同事遇到這個狀況時，不可能請每個人開 F12 貼指令。**
+而且 Chrome 現在預設阻擋在 Console 貼上程式碼（要先手動打 `allow pasting`），
+連她自己都貼不進去。任何需要開發者工具才能解的問題，等於沒解。
+
+### 待驗證
+
+- [ ] 上傳 `core.js` 後，**必須在清空 `sessionStorage` 的狀態下測登入**，
+      否則會像我一開始那樣走靜默登入、測不到這條路徑
+- [ ] 兩頁都要測（共用同一份 `core.js`）
