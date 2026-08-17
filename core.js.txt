@@ -316,20 +316,23 @@ async function boot() {
     // 從整頁轉向登入回來時，先處理回應
     try {
       const r = await msalApp.handleRedirectPromise();
-      if (r && r.account) activeAccount = r.account;
-      localStorage.removeItem('wb-login-retry');   // 成功了就把重試記號清掉
+      if (r && r.account) {
+        activeAccount = r.account;
+        sessionStorage.removeItem('wb-login-retry');   // 真的拿到帳號才算成功
+      }
     } catch (e) {
       console.warn('handleRedirectPromise:', e && e.message);
-      // state_not_found 這一類是「上次跳轉的殘留」，不是使用者做錯什麼。
-      // 自動清掉殘留再重載一次——只做一次，用 localStorage 記著，避免無限重載。
-      if (!localStorage.getItem('wb-login-retry')) {
+      // 上次跳轉的殘留（例如 state_not_found）會讓後續每次按登入都被 MSAL 攔下來，
+      // 畫面上完全沒反應。自動清掉殘留再重載一次。
+      // 記號放 sessionStorage 而不是 localStorage：clearMsalState() 只清 MSAL 自己的鍵，
+      // 不會誤刪它；而且它只在「真的拿到帳號」時才清除。
+      // 先前版本在每次乾淨載入時就清掉記號，等於沒有保護，持續失敗會變成無限重載。
+      if (!sessionStorage.getItem('wb-login-retry')) {
         clearMsalState();
-        localStorage.setItem('wb-login-retry', String(Date.now()));
+        sessionStorage.setItem('wb-login-retry', '1');
         location.replace(REDIRECT_URI);
         return;
       }
-      // 重試過還是失敗，才把訊息交給使用者，並且講可以怎麼做
-      localStorage.removeItem('wb-login-retry');
       const h = document.getElementById('signin-hint');
       if (h) h.innerHTML = '上次的登入沒有完成，已重設。<br>請再按一次登入；'
         + '若還是不行，把這個網站的分頁全部關掉再重新開啟。';
@@ -344,4 +347,8 @@ async function boot() {
   }
 }
 
-boot();
+// 這裡刻意不呼叫 boot()。由各頁面在自己的 script 裡呼叫，
+// 因為 boot() 會用到頁面自訂的 onDataLoaded()，那個函式在 core.js 載入時還不存在。
+// 拆檔時這裡殘留了一個 boot()，加上頁面自己呼叫的那一次 → boot() 跑了兩次
+// → handleRedirectPromise() 也跑兩次 → 第一次消耗掉核對值，第二次就 state_not_found
+// → 帳號被丟掉、回到登入頁。這就是「按登入沒反應」的真正原因。
