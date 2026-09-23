@@ -49,7 +49,9 @@
 <div id="toast"></div>
 
 <!-- 這一頁的網址跟根目錄不同，Entra 對重新導向 URI 是完全比對，所以要各自宣告並各自註冊 -->
-<script>const REDIRECT_URI = 'https://yulunyeh0731.github.io/exhibitions/';</script>
+<script>const REDIRECT_URI = 'https://yulunyeh0731.github.io/exhibitions/';
+// 這一頁只讀展覽。待辦等部門內部資料不在這裡宣告，所以連請求都不會發出去。
+const PAGE_MODULES = ['exhibitions'];</script>
 <script src="../core.js"></script>
 <script src="../exhibitions.js"></script>
 <script>
