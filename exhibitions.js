@@ -136,48 +136,23 @@ function stageLabel(en, ex) {
 let exhibitions = [];
 let currentYear = null;
 
-function toSlashDate(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d)) return String(iso);
-  const p = n => String(n).padStart(2, '0');
-  return d.getUTCFullYear() + '/' + p(d.getUTCMonth() + 1) + '/' + p(d.getUTCDate());
-}
+// toSlashDate／parseDate／shortDate／fmtMoney 已搬進 core.js 共用，這裡不再定義。
+// 重複定義會造成全域重複宣告，整頁會白畫面。
 
-function normalize(f, id) {
-  const o = { _id: id };
-  for (const en in FIELD_MAP) {
-    const zh = FIELD_MAP[en];
-    let v = f[en];
-    if (v === undefined || v === null) { o[zh] = ''; continue; }
-    if (en === 'StartDate' || en === 'EndDate') o[zh] = toSlashDate(v);
-    else if (BOOL_FIELDS.indexOf(en) >= 0) o[zh] = (v === true) ? '是' : '否';
-    else if (typeof v === 'object') o[zh] = v.Url || '';
-    else o[zh] = String(v);
-  }
-  return o;
-}
+// 讀取程式。由 core.js 的 loadData() 依頁面宣告的 PAGE_MODULES 呼叫。
+DATA_LOADERS.exhibitions = async function () {
+  const raw = await spGet('exhibitions');
+  // 軟刪除：骨幹規劃五之二第 4 條，各模組一律過濾掉 IsDeleted
+  exhibitions = raw
+    .map(it => normalizeFields(it.fields || {}, it.id, FIELD_MAP, { bools: BOOL_FIELDS, dates: ['StartDate', 'EndDate'] }))
+    .filter(e => e['展覽名稱'] && e['已刪除'] !== '是');
+};
 
 // 已結案＝已完成（綠），暫不參加＝不適用（灰）。
 // 兩者原本都是灰，意思完全相反卻長得一樣。左側色槓與詳情頁的狀態標籤都讀這張表。
 const STATUS_COLOR = {
   '確定參加': 'blue', '評估中': 'amber', '已結案': 'green', '暫不參加': 'gray'
 };
-
-function fmtMoney(v) {
-  if (v === '' || v === undefined || v === null) return '-';
-  const n = Number(v);
-  if (isNaN(n)) return v;
-  return 'NT$ ' + n.toLocaleString();
-}
-
-function parseDate(d) {
-  if (!d) return null;
-  const p = String(d).split('/');
-  if (p.length !== 3) return null;
-  const dt = new Date(+p[0], +p[1] - 1, +p[2]);
-  return isNaN(dt) ? null : dt;
-}
 
 function daysInfo(ex) {
   const s = parseDate(ex['展期開始']), e = parseDate(ex['展期結束']) || s;
@@ -197,12 +172,6 @@ function stageSetHtml(ex) {
     return `<span class="stage ${on ? 'stage-on' : 'stage-off'}">${stageLabel(en, ex)}</span>`;
   };
   return `<span class="stage-set ex-right">${Object.keys(STAGE_FIELDS).map(pill).join('')}</span>`;
-}
-
-function shortDate(d) {
-  if (!d) return '-';
-  const parts = d.split('/');
-  return parts.length === 3 ? `${parts[1]}/${parts[2]}` : d;
 }
 
 // 資料夾一定存在（建清單時一次建好），所以連結是算出來的，不是存出來的。

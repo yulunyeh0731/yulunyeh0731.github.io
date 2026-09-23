@@ -33,7 +33,7 @@ const GRAPH_SITE_ID = 'texray.sharepoint.com,523489e7-e84e-4554-96f9-2a27018db21
 const LISTS = {
   exhibitions:  '01765d4f-5cb9-4a5b-b04f-a9be79f5960e',
   requests:     '',
-  todos:        '',
+  todos:        '5dbf3da6-389b-4ff0-ba8f-11d0cf658964',
   annual:       '',
   projects:     '',
   projectItems: '',
@@ -193,6 +193,72 @@ function fmtStamp(iso) {
   return d.getFullYear() + '/' + p(d.getMonth() + 1) + '/' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
 }
 
+/* ===== 共用小工具　—　兩個以上的模組會用到的才放這裡 =====
+   原本這幾個寫在 exhibitions.js 裡。第二個模組如果各寫一份同名的，
+   用 const 宣告的那幾個會直接拋出重複宣告的錯誤，整頁白畫面——
+   不是只有新模組壞掉，是連展覽都打不開。所以搬上來共用。 */
+
+// SharePoint 的日期是 ISO 字串，一律轉成 2026/10/06 這種格式再進畫面。
+// 用 UTC 取值：日期欄位存的是午夜零時，用本地時區會在台灣時間變成前一天。
+function toSlashDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return String(iso);
+  const p = n => String(n).padStart(2, '0');
+  return d.getUTCFullYear() + '/' + p(d.getUTCMonth() + 1) + '/' + p(d.getUTCDate());
+}
+
+function parseDate(d) {
+  if (!d) return null;
+  const p = String(d).split('/');
+  if (p.length !== 3) return null;
+  const dt = new Date(+p[0], +p[1] - 1, +p[2]);
+  return isNaN(dt) ? null : dt;
+}
+
+function shortDate(d) {
+  if (!d) return '-';
+  const parts = String(d).split('/');
+  return parts.length === 3 ? `${parts[1]}/${parts[2]}` : d;
+}
+
+// 0 是有效的金額，不能當成空白。空白代表「還沒填」或「由別的單位付」。
+function fmtMoney(v) {
+  if (v === '' || v === undefined || v === null) return '-';
+  const n = Number(v);
+  if (isNaN(n)) return v;
+  return 'NT$ ' + n.toLocaleString();
+}
+
+// 把 Graph 回傳的欄位（英文內部名稱）轉成程式內部用的中文鍵名。
+//   map    英文內部名稱 → 中文鍵名
+//   bools  是／否欄位，轉成 '是' / '否' 字串
+//   dates  日期欄位，轉成 2026/10/06
+//   people 人員欄位。Graph 把人員放在「欄位名稱 + LookupId」，
+//          例如 Owner 這一欄實際回傳的是 OwnerLookupId，值是網站使用者的內部編號。
+//          這一點已於 2026-09-23 用 REST API 查過使用者清單確認，不是推測。
+function normalizeFields(f, id, map, opts) {
+  opts = opts || {};
+  const bools  = opts.bools  || [];
+  const dates  = opts.dates  || [];
+  const people = opts.people || [];
+  const o = { _id: id };
+  for (const en in map) {
+    const zh = map[en];
+    if (people.indexOf(en) >= 0) {
+      o[zh] = f[en + 'LookupId'] ? String(f[en + 'LookupId']) : '';
+      continue;
+    }
+    let v = f[en];
+    if (v === undefined || v === null) { o[zh] = ''; continue; }
+    if (dates.indexOf(en) >= 0)      o[zh] = toSlashDate(v);
+    else if (bools.indexOf(en) >= 0) o[zh] = (v === true) ? '是' : '否';
+    else if (typeof v === 'object')  o[zh] = v.Url || v.LookupValue || v.Title || '';
+    else o[zh] = String(v);
+  }
+  return o;
+}
+
 let toastTimer = null;
 function toast(msg, isErr) {
   const el = document.getElementById('toast');
@@ -255,6 +321,13 @@ async function signIn() {
   }
 }
 
+/* 各模組在自己的檔案結尾註冊自己的讀取程式：
+     DATA_LOADERS.todos = async function () { ... };
+   頁面則在載入 core.js 之前宣告 PAGE_MODULES，決定這一頁要讀哪幾張清單。
+   這樣公開的 /exhibitions/ 只會讀展覽，不會去碰部門內部的待辦資料——
+   而且不是靠「畫面上沒顯示」，是根本沒發出那個請求。 */
+const DATA_LOADERS = {};
+
 async function loadData() {
   const loading = document.getElementById('loading');
   loading.classList.remove('hidden');
@@ -266,10 +339,10 @@ async function loadData() {
     setModeBadge();
 
     loading.textContent = '資料載入中…';
-    const raw = await spGet('exhibitions');
-    // 軟刪除：骨幹規劃五之二第 4 條，各模組一律過濾掉 IsDeleted
-    exhibitions = raw.map(it => normalize(it.fields || {}, it.id))
-      .filter(e => e['展覽名稱'] && e['已刪除'] !== '是');
+    const mods = (typeof PAGE_MODULES !== 'undefined') ? PAGE_MODULES : Object.keys(DATA_LOADERS);
+    for (const k of mods) {
+      if (typeof DATA_LOADERS[k] === 'function') await DATA_LOADERS[k]();
+    }
 
     loading.classList.add('hidden');
     document.getElementById('updated-label').textContent =

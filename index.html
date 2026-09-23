@@ -77,14 +77,25 @@
           <div class="stat-box stat-evaluating"><p>評估中</p><p id="dash-ex-evaluating">-</p></div>
           <div class="stat-box stat-done"><p>已結案</p><p id="dash-ex-done">-</p></div>
         </div>
-        <p style="font-size:12.5px; color:var(--text-tertiary); margin:14px 0 0; padding-top:12px; border-top:1px solid var(--border);">
-          其他模組建置後，會在這一頁一起彙總。
+      </div>
+      <div class="card">
+        <p class="section-title">待辦事項</p>
+        <div class="stats-grid stats-3">
+          <div class="stat-box stat-evaluating"><p>逾期</p><p id="dash-td-overdue">-</p></div>
+          <div class="stat-box stat-confirmed"><p>本週到期</p><p id="dash-td-week">-</p></div>
+          <div class="stat-box stat-total"><p>進行中</p><p id="dash-td-doing">-</p></div>
+        </div>
+        <p id="dash-td-note" style="font-size:12.5px; margin:14px 0 0; padding-top:12px; border-top:1px solid var(--border); color:var(--text-secondary);"></p>
+        <p style="font-size:12.5px; color:var(--text-tertiary); margin:10px 0 0;">
+          已完成的不列在這裡，依儀表板原則只顯示需要採取行動的項目。其他模組建置後會一起彙總。
         </p>
       </div>
     </div>
 
     <!-- 展覽模組的版面由 exhibitions.js 掛載，不寫在這裡——它跟 /exhibitions/ 共用同一份 -->
     <div id="mod-exhibitions" class="module hidden"></div>
+    <!-- 待辦事項的版面由 todos.js 掛載。這一頁才有，公開頁沒有。 -->
+    <div id="mod-todos" class="module hidden"></div>
     <!-- ============ 尚未建置的模組共用一個畫面 ============ -->
     <div id="mod-todo" class="module hidden">
       <div class="card todo-note">
@@ -99,17 +110,21 @@
 
 <div id="toast"></div>
 
-<div id="toast"></div>
-
 <!-- 這一頁的重新導向 URI 是根目錄，必須在 core.js 之前宣告 -->
-<script>const REDIRECT_URI = 'https://yulunyeh0731.github.io/';</script>
+<script>
+const REDIRECT_URI = 'https://yulunyeh0731.github.io/';
+// 這一頁要讀哪幾張清單。公開的 /exhibitions/ 只宣告 exhibitions，
+// 所以它根本不會去讀部門內部的待辦資料——不是靠畫面不顯示。
+const PAGE_MODULES = ['exhibitions', 'todos'];
+</script>
 <script src="./core.js"></script>
 <script src="./exhibitions.js"></script>
+<script src="./todos.js"></script>
 <script>
 const MODULES = {
   dashboard:   { title: '儀表板',     ready: true  },
   requests:    { title: '受理登記',   ready: false, desc: '總務與企劃共用一張清單，用「部門」欄位分。可以做的事：新增一筆、推進狀態、指派負責人、結案。' },
-  todos:       { title: '待辦事項',   ready: false, desc: '指派、打勾完成、改期。三個視角：我的待辦、我派出的、部門檢視。' },
+  todos:       { title: '待辦事項',   ready: true  },
   annual:      { title: '年度行事曆', ready: false, desc: '年度或半年一次、由外部死線驅動的工作。觸發器是日期，不是別人的郵件。內容還沒盤點過——建這張清單之前要先問出實際每年要交出去的東西有哪些。' },
   exhibitions: { title: '展覽',       ready: true  },
   projects:    { title: '專案管理',   ready: false, desc: '兩張清單：專案主體掛階段，工項各自有廠商、時程、驗收。樓層整修是第一個。' },
@@ -130,6 +145,7 @@ function go(mod) {
   if (meta.ready) {
     document.getElementById('mod-' + mod).classList.remove('hidden');
     if (mod === 'exhibitions') showMain();
+    if (mod === 'todos') { todoShowMain(); todoRender(); }
     if (mod === 'dashboard') renderDashboard();
   } else {
     document.getElementById('todo-title').textContent = meta.title + '　·　尚未建置';
@@ -189,15 +205,44 @@ function renderDashboard() {
   if (!canWrite) {
     alerts.push('<span class="empty-note">目前是唯讀模式。寫入權限經組織同意後，狀態與勾選可直接在這裡點按修改。</span>');
   }
+  renderDashboardTodos(alerts);
+
   document.getElementById('dash-alerts').innerHTML = alerts.length
     ? alerts.map(a => '<div>' + a + '</div>').join('')
     : '<span class="empty-note">目前沒有需要注意的事。</span>';
+}
+
+// 待辦：儀表板只顯示需要採取行動的，所以已完成一律不算。
+function renderDashboardTodos(alerts) {
+  const open = todos.filter(t => t['狀態'] !== '已完成');
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const weekEnd = new Date(today.getTime() + 7 * 86400000);
+  const overdue = todoOverdue();
+  const week = open.filter(t => {
+    const d = parseDate(t['到期日']);
+    return d && d >= today && d <= weekEnd;
+  });
+  document.getElementById('dash-td-overdue').textContent = overdue.length;
+  document.getElementById('dash-td-week').textContent    = week.length;
+  document.getElementById('dash-td-doing').textContent   = open.filter(t => t['狀態'] === '進行中').length;
+
+  const note = document.getElementById('dash-td-note');
+  if (overdue.length) {
+    note.innerHTML = `<span style="color:var(--red); font-weight:600;">逾期 ${overdue.length} 件</span>　·　`
+      + overdue.slice(0, 3).map(t => t['工作名稱']).join('、') + (overdue.length > 3 ? ' 等' : '');
+    alerts.push(`待辦逾期　<strong>${overdue.length}</strong> 件　·　`
+      + overdue.slice(0, 3).map(t => t['工作名稱']).join('、') + (overdue.length > 3 ? ' 等' : ''));
+  } else {
+    note.textContent = open.length ? '沒有逾期的待辦。' : '目前沒有進行中的待辦。';
+  }
 }
 
 // 資料讀完後：掛上展覽模組的版面，畫年度分頁，停在儀表板
 function onDataLoaded() {
   mountExhibitions(document.getElementById('mod-exhibitions'));
   renderYearTabs();
+  mountTodos(document.getElementById('mod-todos'));
+  todoRender();
   go('dashboard');
 }
 
